@@ -5,6 +5,7 @@ import { Lock, Plus } from 'lucide-react'
 import type { Project } from '@/domain/types'
 import { compareISO } from '@/domain/dates'
 import { nextActionOf, openTasksOfProject } from '@/domain/selectors'
+import type { Task } from '@/domain/types'
 import { useStore } from '@/store/useStore'
 import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { Button, Chip, Empty, Input, PageHeader, SectionLabel } from '@/components/ui'
@@ -55,7 +56,7 @@ export default function ProjectsPage() {
 
       <div className="flex flex-col gap-2">
         {active.map((p) => (
-          <ProjectRow key={p.id} project={p} />
+          <ProjectRow key={p.id} project={p} tasks={tasks} />
         ))}
       </div>
 
@@ -64,7 +65,7 @@ export default function ProjectsPage() {
           <SectionLabel className="mt-10">{t('projects.planned')}</SectionLabel>
           <div className="flex flex-col gap-2">
             {planned.map((p) => (
-              <ProjectRow key={p.id} project={p} />
+              <ProjectRow key={p.id} project={p} tasks={tasks} />
             ))}
           </div>
         </>
@@ -75,21 +76,22 @@ export default function ProjectsPage() {
           <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">{t('projects.inactive')}</summary>
           <div className="mt-3 flex flex-col gap-2">
             {inactive.map((p) => (
-              <ProjectRow key={p.id} project={p} muted />
+              <ProjectRow key={p.id} project={p} tasks={tasks} muted />
             ))}
           </div>
         </details>
       )}
       <div className="h-10" />
-      {active.length > 0 && <SectionLabel className="opacity-0">{t('projects.active')}</SectionLabel>}
     </div>
   )
+}
 
-  function ProjectRow({ project, muted }: { project: Project; muted?: boolean }) {
-    const rel = useRelDay()
-    const next = nextActionOf(tasks, project.id)
-    const open = openTasksOfProject(tasks, project.id).length
-    return (
+function ProjectRow({ project, tasks, muted }: { project: Project; tasks: Task[]; muted?: boolean }) {
+  const { t } = useTranslation()
+  const rel = useRelDay()
+  const next = nextActionOf(tasks, project.id)
+  const open = openTasksOfProject(tasks, project.id).length
+  return (
       <Link to={`/projects/${project.id}`} className={`card flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2 ${muted ? 'opacity-70' : ''}`}>
         <ProjectDot color={project.color} size={10} />
         <div className="min-w-0 flex-1">
@@ -115,5 +117,4 @@ export default function ProjectsPage() {
         </div>
       </Link>
     )
-  }
 }

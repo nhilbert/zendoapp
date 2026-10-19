@@ -90,3 +90,19 @@ describe('blocks absorb their project meetings', () => {
     expect(c.freeMinutes).toBe(600 - 90 - 360)
   })
 })
+
+describe('anchored recurrence (no drift)', () => {
+  it('returns to the 31st after February and handles quarters', async () => {
+    const { nextOccurrenceFrom } = await import('./dates')
+    expect(nextOccurrenceFrom('2026-01-31', 'monthly', '2026-01-31')).toBe('2026-02-28')
+    expect(nextOccurrenceFrom('2026-01-31', 'monthly', '2026-02-28')).toBe('2026-03-31')
+    expect(nextOccurrenceFrom('2026-10-31', 'quarterly', '2027-01-31')).toBe('2027-04-30')
+    expect(nextOccurrenceFrom('2026-10-31', 'quarterly', '2027-04-30')).toBe('2027-07-31')
+    expect(nextOccurrenceFrom('2026-10-19', 'weekly', '2026-11-30')).toBe('2026-12-07')
+  })
+  it('tolerates malformed settings times', () => {
+    const c = dayCapacity(DATE, { ...settings, workdayStart: '', budgetEnd: 'x' as never }, [ev({ start: '09:00', end: '10:00' })], [], [])
+    expect(Number.isNaN(c.freeMinutes)).toBe(false)
+    expect(c.workMinutes).toBe(600)
+  })
+})

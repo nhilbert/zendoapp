@@ -5,8 +5,8 @@ import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from 
 import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Video } from 'lucide-react'
 import type { ISODate, Task } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
-import { addDaysISO, addMinutes, durationMinutes, fmtHours, fmtTime, hhmmToMinutes, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
-import { candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, projectsWithoutNextAction, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
+import { addDaysISO, addMinutes, durationMinutes, fmtDate, fmtHours, fmtTime, hhmmToMinutes, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
+import { candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, projectsWithoutNextAction, safeTimes, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
@@ -30,16 +30,12 @@ export default function TodayPage() {
   const projects = useVisibleProjects()
   const events = useVisibleEvents()
   const blocks = useVisibleBlocks()
-  const settings = useStore((s) => s.settings)
+  const settings = safeTimes(useStore((s) => s.settings))
   const reviews = useStore((s) => s.reviews)
   const scheduleTask = useStore((s) => s.scheduleTask)
-  const completeTask = useStore((s) => s.completeTask)
-  const setTaskStatus = useStore((s) => s.setTaskStatus)
-  const addTask = useStore((s) => s.addTask)
   const saveReview = useStore((s) => s.saveReview)
   const openTask = useUi((s) => s.openTask)
   const openEvent = useUi((s) => s.openEvent)
-  const projectMap = useProjectMap()
   const sensors = useDndSensors()
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -100,7 +96,10 @@ export default function TodayPage() {
   }
   const activeTask = activeId ? tasks.find((x) => x.id === activeId) : undefined
 
-  const title = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(date))
+  const title = fmtDate(date, locale, { weekday: 'long', day: 'numeric', month: 'long' })
+  const saveNotes = () => {
+    if (notes !== (dayReview?.notes ?? '')) saveReview('daily', date, notes)
+  }
 
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-[520px] flex-col">
@@ -168,7 +167,7 @@ export default function TodayPage() {
                   {dayEvents
                     .filter((x) => !x.allDay)
                     .map((ev) => (
-                      <EventBlock key={ev.id} event={ev} top={y(ev.start)} h={Math.max(px, (durationMinutes(ev.start, ev.end) / SLOT) * px)} />
+                      <EventBlock key={ev.id} event={ev} top={y(ev.start)} h={Math.max(px, (durationMinutes(ev.start, ev.end) / SLOT) * px)} px={px} />
                     ))}
                 </div>
                 <div className="absolute inset-y-0 right-0 w-[62%] pl-1">
@@ -216,8 +215,8 @@ export default function TodayPage() {
             <div>
               <SectionLabel>{t('today.candidates')}</SectionLabel>
               <div className="flex flex-col gap-4">
-                <CandidateGroup label={t('today.overdue')} items={cands.overdue} tone="rose" />
-                <CandidateGroup label={t('today.dueToday')} items={cands.due} tone="amber" />
+                <CandidateGroup label={t('today.overdue')} items={cands.overdue} tone="rose" date={date} />
+                <CandidateGroup label={t('today.dueToday')} items={cands.due} tone="amber" date={date} />
                 {cands.fromBlocks.length > 0 && (
                   <div>
                     <div className="mb-1 text-[12px] text-ink-3">{t('today.fromBlocks')}</div>
@@ -234,7 +233,7 @@ export default function TodayPage() {
                             </Link>
                           </li>
                         ) : task ? (
-                          <CandidateRow key={task.id} task={task} />
+                          <CandidateRow key={task.id} task={task} date={date} />
                         ) : (
                           <li key={i} className="px-2 py-1.5 text-[13px] text-ink-2">
                             <ProjectChip project={null} /> · {t('today.chores')}
@@ -244,7 +243,7 @@ export default function TodayPage() {
                     </ul>
                   </div>
                 )}
-                <CandidateGroup label={t('today.chores')} items={cands.chores} />
+                <CandidateGroup label={t('today.chores')} items={cands.chores} date={date} />
                 {cands.overdue.length + cands.due.length + cands.fromBlocks.length + cands.chores.length === 0 && (
                   <p className="text-[13px] text-ink-3">{t('today.noCandidates')}</p>
                 )}
@@ -256,7 +255,7 @@ export default function TodayPage() {
                 <SectionLabel>{t('review.noNextAction')}</SectionLabel>
                 <ul className="flex flex-col gap-1">
                   {missingNext.map((p) => (
-                    <NextActionPrompt key={p.id} projectId={p.id} />
+                    <NextActionPrompt key={p.id} projectId={p.id} tasks={tasks} />
                   ))}
                 </ul>
               </div>
@@ -264,7 +263,7 @@ export default function TodayPage() {
 
             <div>
               <SectionLabel>{t('today.notes')}</SectionLabel>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => saveReview('daily', date, notes)} placeholder={t('today.notesPlaceholder')} className="min-h-[96px]" />
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} placeholder={t('today.notesPlaceholder')} className="min-h-[96px]" />
             </div>
           </aside>
         </div>
@@ -272,133 +271,150 @@ export default function TodayPage() {
       </DndContext>
     </div>
   )
+}
 
-  function EventBlock({ event, top, h }: { event: VisibleEvent; top: number; h: number }) {
-    const project = event.projectId && !event.masked ? projectMap.get(event.projectId) : null
-    return (
-      <button
-        type="button"
-        onClick={() => !event.masked && openEvent(event.id)}
-        style={{ top, height: h - 2, ...projectVars(project?.color ?? null) }}
-        className={cx(
-          'pointer-events-auto absolute left-0 right-0 overflow-hidden rounded-md border-l-2 px-2 py-1 text-left',
-          isBlocking(event) ? 'bg-surface-2' : 'border-dashed bg-transparent opacity-70',
-          project ? 'pc-line' : 'border-ink-3',
-        )}
-      >
-        <div className="flex items-center gap-1 truncate text-[12.5px] leading-tight text-ink">
-          {event.kind === 'online' ? <Video size={11} className="shrink-0 text-ink-3" /> : <MapPin size={11} className="shrink-0 text-ink-3" />}
-          <span className={cx('truncate', event.masked && 'italic text-ink-3')}>{event.title}</span>
-          {event.private && <Lock size={10} className="ml-1 shrink-0 text-ink-3" />}
-          {!isBlocking(event) && <span className="ml-1 shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
+function EventBlock({ event, top, h, px }: { event: VisibleEvent; top: number; h: number; px: number }) {
+  const { t } = useTranslation()
+  const locale = useLocale()
+  const projectMap = useProjectMap()
+  const openEvent = useUi((s) => s.openEvent)
+  const project = event.projectId && !event.masked ? projectMap.get(event.projectId) : null
+  return (
+    <button
+      type="button"
+      onClick={() => !event.masked && openEvent(event.id)}
+      style={{ top, height: h - 2, ...projectVars(project?.color ?? null) }}
+      className={cx(
+        'pointer-events-auto absolute left-0 right-0 overflow-hidden rounded-md border-l-2 px-2 py-1 text-left',
+        isBlocking(event) ? 'bg-surface-2' : 'border-dashed bg-transparent opacity-70',
+        project ? 'pc-line' : 'border-ink-3',
+      )}
+    >
+      <div className="flex items-center gap-1 truncate text-[12.5px] leading-tight text-ink">
+        {event.kind === 'online' ? <Video size={11} className="shrink-0 text-ink-3" /> : <MapPin size={11} className="shrink-0 text-ink-3" />}
+        <span className={cx('truncate', event.masked && 'italic text-ink-3')}>{event.title}</span>
+        {event.private && <Lock size={10} className="ml-1 shrink-0 text-ink-3" />}
+        {!isBlocking(event) && <span className="ml-1 shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
+      </div>
+      {h >= px * 1.5 && (
+        <div className="tnum mt-0.5 text-[11px] text-ink-3">
+          {fmtTime(event.start, locale)}–{fmtTime(event.end, locale)}
         </div>
-        {h >= px * 1.5 && (
-          <div className="tnum mt-0.5 text-[11px] text-ink-3">
-            {fmtTime(event.start, locale)}–{fmtTime(event.end, locale)}
+      )}
+    </button>
+  )
+}
+
+function TaskBlock({ task }: { task: Task }) {
+  const locale = useLocale()
+  const projectMap = useProjectMap()
+  const completeTask = useStore((s) => s.completeTask)
+  const project = task.projectId ? projectMap.get(task.projectId) : null
+  const end = addMinutes(task.plannedStart!, task.estimateMinutes ?? 30)
+  return (
+    <div
+      style={projectVars(project?.color ?? null)}
+      className={cx('flex h-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1', task.status === 'done' ? 'border-line-2 bg-surface-2/60' : 'pc-line bg-accent-soft/70')}
+    >
+      <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} className="mt-[2px] scale-90" />
+      <div className="min-w-0">
+        <div className={cx('truncate text-[12.5px] leading-tight', task.status === 'done' && 'strike')}>{task.title}</div>
+        {(task.estimateMinutes ?? 30) >= 45 && (
+          <div className="tnum mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-3">
+            {fmtTime(task.plannedStart!, locale)}–{fmtTime(end, locale)}
+            {project && (
+              <>
+                <ProjectDot color={project.color} size={5} /> <span className="truncate">{project.name}</span>
+              </>
+            )}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function PlanRow({ task, overlay }: { task: Task; overlay?: boolean }) {
+  const completeTask = useStore((s) => s.completeTask)
+  return (
+    <div className={cx('flex items-start gap-3 rounded-lg px-2 py-2', overlay ? 'card w-[320px] shadow-[var(--shadow)]' : 'hover:bg-surface-2')}>
+      <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} className="mt-[3px]" />
+      <div className="min-w-0 flex-1">
+        <div className={cx('text-[14px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
+        <TaskMeta task={task} className="mt-1" />
+      </div>
+    </div>
+  )
+}
+
+function CandidateGroup({ label, items, tone, date }: { label: string; items: Task[]; tone?: 'rose' | 'amber'; date: ISODate }) {
+  if (items.length === 0) return null
+  return (
+    <div>
+      <div className={cx('mb-1 text-[12px]', tone === 'rose' ? 'text-rose' : tone === 'amber' ? 'text-amber' : 'text-ink-3')}>{label}</div>
+      <ul className="flex flex-col gap-1">
+        {items.map((x) => (
+          <CandidateRow key={x.id} task={x} date={date} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function CandidateRow({ task, date }: { task: Task; date: ISODate }) {
+  const { t } = useTranslation()
+  const projectMap = useProjectMap()
+  const openTask = useUi((s) => s.openTask)
+  const scheduleTask = useStore((s) => s.scheduleTask)
+  const project = task.projectId ? projectMap.get(task.projectId) : null
+  return (
+    <li className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-2">
+      <button type="button" onClick={() => openTask(task.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-[13px]">
+        <ProjectDot color={project?.color ?? null} size={6} />
+        <span className="truncate">{task.title}</span>
+        {task.status === 'next' && project && <span className="text-[10px] uppercase tracking-wide text-accent">{t('today.nextAction')}</span>}
       </button>
-    )
-  }
+      <IconButton label={t('today.addToDay')} onClick={() => scheduleTask(task.id, date)} className="opacity-0 group-hover:opacity-100">
+        <Plus size={14} />
+      </IconButton>
+    </li>
+  )
+}
 
-  function TaskBlock({ task }: { task: Task }) {
-    const project = task.projectId ? projectMap.get(task.projectId) : null
-    const end = addMinutes(task.plannedStart!, task.estimateMinutes ?? 30)
-    return (
-      <div
-        style={projectVars(project?.color ?? null)}
-        className={cx('flex h-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1', task.status === 'done' ? 'border-line-2 bg-surface-2/60' : 'pc-line bg-accent-soft/70')}
+function NextActionPrompt({ projectId, tasks }: { projectId: string; tasks: Task[] }) {
+  const { t } = useTranslation()
+  const projectMap = useProjectMap()
+  const setTaskStatus = useStore((s) => s.setTaskStatus)
+  const addTask = useStore((s) => s.addTask)
+  const [value, setValue] = useState('')
+  const project = projectMap.get(projectId)
+  if (!project) return null
+  const candidates = tasks.filter((x) => x.projectId === projectId && isOpen(x) && x.status !== 'someday').sort(sortTasks)
+  return (
+    <li className="rounded-xl border border-dashed border-amber/50 px-3 py-2" style={projectVars(project.color)}>
+      <div className="flex items-center gap-2 text-[13px]">
+        <ProjectDot color={project.color} />
+        <span className="truncate font-medium">{project.name}</span>
+      </div>
+      <ul className="mt-1 flex flex-col">
+        {candidates.slice(0, 3).map((x) => (
+          <li key={x.id} className="flex items-center justify-between gap-2 py-0.5 text-[12.5px] text-ink-2">
+            <span className="truncate">{x.title}</span>
+            <button type="button" onClick={() => setTaskStatus(x.id, 'next')} className="shrink-0 text-[12px] text-accent hover:underline">
+              {t('today.pick')}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (value.trim()) addTask({ title: value, projectId, status: 'next' })
+          setValue('')
+        }}
       >
-        <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} className="mt-[2px] scale-90" />
-        <div className="min-w-0">
-          <div className={cx('truncate text-[12.5px] leading-tight', task.status === 'done' && 'strike')}>{task.title}</div>
-          {(task.estimateMinutes ?? 30) >= 45 && (
-            <div className="tnum mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-3">
-              {fmtTime(task.plannedStart!, locale)}–{fmtTime(end, locale)}
-              {project && (
-                <>
-                  <ProjectDot color={project.color} size={5} /> <span className="truncate">{project.name}</span>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  function PlanRow({ task, overlay }: { task: Task; overlay?: boolean }) {
-    return (
-      <div className={cx('flex items-start gap-3 rounded-lg px-2 py-2', overlay ? 'card w-[320px] shadow-[var(--shadow)]' : 'hover:bg-surface-2')}>
-        <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} className="mt-[3px]" />
-        <div className="min-w-0 flex-1">
-          <div className={cx('text-[14px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
-          <TaskMeta task={task} className="mt-1" />
-        </div>
-      </div>
-    )
-  }
-
-  function CandidateGroup({ label, items, tone }: { label: string; items: Task[]; tone?: 'rose' | 'amber' }) {
-    if (items.length === 0) return null
-    return (
-      <div>
-        <div className={cx('mb-1 text-[12px]', tone === 'rose' ? 'text-rose' : tone === 'amber' ? 'text-amber' : 'text-ink-3')}>{label}</div>
-        <ul className="flex flex-col gap-1">
-          {items.map((x) => (
-            <CandidateRow key={x.id} task={x} />
-          ))}
-        </ul>
-      </div>
-    )
-  }
-
-  function CandidateRow({ task }: { task: Task }) {
-    const project = task.projectId ? projectMap.get(task.projectId) : null
-    return (
-      <li className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-2">
-        <button type="button" onClick={() => openTask(task.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-[13px]">
-          <ProjectDot color={project?.color ?? null} size={6} />
-          <span className="truncate">{task.title}</span>
-          {task.status === 'next' && project && <span className="text-[10px] uppercase tracking-wide text-accent">{t('today.nextAction')}</span>}
-        </button>
-        <IconButton label={t('today.addToDay')} onClick={() => scheduleTask(task.id, date)} className="opacity-0 group-hover:opacity-100">
-          <Plus size={14} />
-        </IconButton>
-      </li>
-    )
-  }
-
-  function NextActionPrompt({ projectId }: { projectId: string }) {
-    const project = projectMap.get(projectId)!
-    const candidates = tasks.filter((x) => x.projectId === projectId && isOpen(x) && x.status !== 'someday').sort(sortTasks)
-    const [value, setValue] = useState('')
-    return (
-      <li className="rounded-xl border border-dashed border-amber/50 px-3 py-2" style={projectVars(project.color)}>
-        <div className="flex items-center gap-2 text-[13px]">
-          <ProjectDot color={project.color} />
-          <span className="truncate font-medium">{project.name}</span>
-        </div>
-        <ul className="mt-1 flex flex-col">
-          {candidates.slice(0, 3).map((x) => (
-            <li key={x.id} className="flex items-center justify-between gap-2 py-0.5 text-[12.5px] text-ink-2">
-              <span className="truncate">{x.title}</span>
-              <button type="button" onClick={() => setTaskStatus(x.id, 'next')} className="shrink-0 text-[12px] text-accent hover:underline">
-                {t('today.pick')}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (value.trim()) addTask({ title: value, projectId, status: 'next' })
-            setValue('')
-          }}
-        >
-          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder={t('today.addNext')} className="mt-1 w-full bg-transparent py-1 text-[12.5px] placeholder:text-ink-3 focus:outline-none" />
-        </form>
-      </li>
-    )
-  }
+        <input value={value} onChange={(e) => setValue(e.target.value)} placeholder={t('today.addNext')} className="mt-1 w-full bg-transparent py-1 text-[12.5px] placeholder:text-ink-3 focus:outline-none" />
+      </form>
+    </li>
+  )
 }

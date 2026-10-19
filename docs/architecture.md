@@ -150,7 +150,21 @@ Ignored on purpose: CalDAV (not offered by Exchange Online), EWS (blocked for ne
 | **4 – AI on the server** | Clarify, project breakdown, week proposal | Server endpoints, prompt files, usage log, privacy notice. |
 | **5 – Rhythm features** | Make the rituals smoother | Recurring chores, weekly objectives, top-3, shutdown checklist, load warning, rollover, focus mode, external capture endpoint. |
 
-## 11. Running the prototype
+## 11. Hosting options (access from a phone, computer switched off)
+
+The prototype keeps data in the browser, so it cannot be reached from a second device until iteration 2 (server + SQLite) exists. After that, the options for a single user, in order of effort:
+
+| Option | Effort | Cost | Login | Notes |
+|---|---|---|---|---|
+| **Small VPS (e.g. Hetzner, Germany) + Docker + Cloudflare Tunnel + Cloudflare Access** | ~1 h once the server exists | ~€4/month, Access free for one user | Access with Microsoft Entra login or email one-time code; the app itself needs no auth code | Data stays on a server you control in the EU; SQLite file + nightly backup. Recommended. |
+| Fly.io with a persistent volume | ~1 h | ~€3–5/month | Same Cloudflare Access in front, or Fly's own proxy auth | No server to maintain; volumes are single-region. |
+| Cloudflare Workers + D1 + Pages | 1–2 sessions (rewrite the server on Hono for Workers, raw OAuth instead of MSAL) | Free tier likely sufficient | Cloudflare Access | No server at all; the calendar sync becomes a Cron Trigger with a confidential-client Graph app. |
+| Tailscale to a machine at home | 30 min | Free | Tailscale identity | Requires a machine that stays on, so it does not meet the requirement. |
+| AWS Amplify (Hosting + Cognito + Amplify Data) | Several sessions | Free tier, then pay per use | Cognito | Means rewriting the data layer to Amplify's GraphQL model and moving the calendar sync into Lambda; heavy for one user and locks the data model to AWS. Not recommended. |
+
+Whichever host: keep the server container identical to the local one, bind it to a private interface and put the identity layer (Cloudflare Access or Tailscale) in front, so the app never has to implement passwords. A mobile layout (Inbox, Today, Clarify first) is a separate piece of work.
+
+## 12. Running the prototype
 
 ```
 npm install

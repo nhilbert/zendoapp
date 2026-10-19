@@ -38,3 +38,13 @@ describe('sensitivity', () => {
     expect([a.private, b.private, c.private]).toEqual([true, true, undefined])
   })
 })
+
+describe('timed multi-day events', () => {
+  it('splits a two-day timed workshop into two entries', () => {
+    const events = mapGraphEvents([item({ id: 'W2', subject: 'Workshop', start: { dateTime: '2026-10-22T09:00:00' }, end: { dateTime: '2026-10-23T17:00:00' } })], range)
+    expect(events.map((e) => [e.date, e.start, e.end, e.externalId])).toEqual([
+      ['2026-10-22', '09:00', '23:59', 'W2#2026-10-22'],
+      ['2026-10-23', '00:00', '17:00', 'W2#2026-10-23'],
+    ])
+  })
+})

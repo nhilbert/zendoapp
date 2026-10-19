@@ -64,6 +64,35 @@ export function nextOccurrence(iso: ISODate, recurrence: Recurrence): ISODate {
   }
 }
 
+/**
+ * The first occurrence of a series (anchored at `anchor`) that lies after `after`.
+ * Month-based rules are computed from the anchor each time, so a chore on the 31st
+ * returns to the 31st after a short month instead of drifting to the 28th.
+ */
+export function nextOccurrenceFrom(anchor: ISODate, recurrence: Recurrence, after: ISODate): ISODate {
+  const step = (k: number): ISODate => {
+    switch (recurrence) {
+      case 'daily':
+        return addDaysISO(anchor, k)
+      case 'weekly':
+        return addDaysISO(anchor, 7 * k)
+      case 'biweekly':
+        return addDaysISO(anchor, 14 * k)
+      case 'monthly':
+        return addMonthsISO(anchor, k)
+      case 'quarterly':
+        return addMonthsISO(anchor, 3 * k)
+      case 'yearly':
+        return addMonthsISO(anchor, 12 * k)
+    }
+  }
+  for (let k = 1; k < 100_000; k++) {
+    const d = step(k)
+    if (d > after) return d
+  }
+  return addDaysISO(after, 1)
+}
+
 export function compareISO(a: ISODate, b: ISODate): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
@@ -72,6 +101,9 @@ export function daysBetween(a: ISODate, b: ISODate): number {
   const ms = fromISODate(b).getTime() - fromISODate(a).getTime()
   return Math.round(ms / 86_400_000)
 }
+
+export const isHHMM = (s: unknown): s is HHMM => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s)
+export const isISODate = (s: unknown): s is ISODate => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(fromISODate(s).getTime())
 
 export function hhmmToMinutes(t: HHMM): number {
   const [h, m] = t.split(':').map(Number)
@@ -117,6 +149,7 @@ export function fmtWeekday(iso: ISODate, locale: string, width: 'short' | 'long'
 }
 
 export function fmtTime(t: HHMM, locale: string): string {
+  if (!isHHMM(t)) return t || '–'
   const [h, m] = t.split(':').map(Number)
   const d = new Date(2000, 0, 1, h, m)
   return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(d)

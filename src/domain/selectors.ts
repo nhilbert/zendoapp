@@ -1,5 +1,19 @@
 import type { BlockSize, CalendarEvent, ISODate, PlanBlock, Project, Settings, Task } from './types'
-import { compareISO, daysBetween, durationMinutes, hhmmToMinutes, isoWeekday, toISODate } from './dates'
+import { DEFAULT_SETTINGS } from './types'
+import { compareISO, daysBetween, durationMinutes, hhmmToMinutes, isHHMM, isoWeekday, toISODate } from './dates'
+
+/** Settings with any malformed time replaced by its default, so capacity never turns into NaN. */
+export function safeTimes(settings: Settings): Settings {
+  const pick = (v: unknown, d: string) => (isHHMM(v) ? v : d)
+  return {
+    ...settings,
+    workdayStart: pick(settings.workdayStart, DEFAULT_SETTINGS.workdayStart),
+    workdayEnd: pick(settings.workdayEnd, DEFAULT_SETTINGS.workdayEnd),
+    budgetStart: pick(settings.budgetStart, DEFAULT_SETTINGS.budgetStart),
+    budgetEnd: pick(settings.budgetEnd, DEFAULT_SETTINGS.budgetEnd),
+    dayCapacityHours: Number.isFinite(settings.dayCapacityHours) && settings.dayCapacityHours > 0 ? settings.dayCapacityHours : DEFAULT_SETTINGS.dayCapacityHours,
+  }
+}
 
 export const isOpen = (t: Task) => t.status !== 'done'
 
@@ -86,17 +100,18 @@ export interface DayCapacity {
 
 export function dayCapacity(
   date: ISODate,
-  settings: Settings,
+  rawSettings: Settings,
   events: CalendarEvent[],
   blocks: PlanBlock[],
   tasks: Task[],
 ): DayCapacity {
+  const settings = safeTimes(rawSettings)
   const isWorkDay = settings.workDays.includes(isoWeekday(date))
   const workMinutes = isWorkDay ? durationMinutes(settings.workdayStart, settings.workdayEnd) : 0
   const dayLength = workMinutes || settings.dayCapacityHours * 60
   let fullDay = false
-  const windowStart = hhmmToMinutes(settings.budgetStart ?? '07:00')
-  const windowEnd = hhmmToMinutes(settings.budgetEnd ?? '19:00')
+  const windowStart = hhmmToMinutes(settings.budgetStart)
+  const windowEnd = hhmmToMinutes(settings.budgetEnd)
   // Meeting minutes per project (null = no project), each event clipped to the budget window.
   const byProject = new Map<string | null, number>()
   for (const e of eventsOn(events, date).filter(isBlocking)) {

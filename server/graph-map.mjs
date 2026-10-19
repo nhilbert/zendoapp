@@ -55,10 +55,20 @@ export function mapGraphEvents(items, { from, to }) {
       }
       continue
     }
-    if (startDate < from || startDate > to) continue
-    const start = item.start.dateTime.slice(11, 16)
-    const end = endDate === startDate ? item.end.dateTime.slice(11, 16) : '23:59'
-    events.push({ title, date: startDate, start, end, allDay: false, kind, availability, private: isPrivate, location, source: 'm365', externalId: `${item.id}#${startDate}` })
+    const startTime = item.start.dateTime.slice(11, 16)
+    const endTime = item.end.dateTime.slice(11, 16)
+    // Timed events that cross midnight (overnight, multi-day workshops) become one entry per day.
+    const days = []
+    if (endDate <= startDate) days.push({ date: startDate, start: startTime, end: endTime })
+    else {
+      days.push({ date: startDate, start: startTime, end: '23:59' })
+      for (let d = addDays(startDate, 1); d < endDate && days.length < 366; d = addDays(d, 1)) days.push({ date: d, start: '00:00', end: '23:59' })
+      if (endTime !== '00:00') days.push({ date: endDate, start: '00:00', end: endTime })
+    }
+    for (const day of days) {
+      if (day.date < from || day.date > to) continue
+      events.push({ title, ...day, allDay: false, kind, availability, private: isPrivate, location, source: 'm365', externalId: `${item.id}#${day.date}` })
+    }
   }
   return events
 }

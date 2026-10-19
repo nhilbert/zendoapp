@@ -5,6 +5,7 @@ import { ArrowLeft, Sparkles, Trash2 } from 'lucide-react'
 import type { EventKind, Priority, Recurrence } from '@/domain/types'
 import { EVENT_KINDS, RECURRENCES } from '@/domain/types'
 import { todayISO } from '@/domain/dates'
+import { isValidEventTimes } from '@/components/EventDialog'
 import { nextActionOf } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
@@ -57,6 +58,7 @@ export default function ClarifyPage() {
   const [evKind, setEvKind] = useState<EventKind>('online')
   const [evLocation, setEvLocation] = useState('')
   const [ai, setAi] = useState<{ status: 'idle' | 'loading' | 'done' | 'error'; message?: string }>({ status: 'idle' })
+  const [formError, setFormError] = useState<string | null>(null)
 
   // Fresh form for every item.
   useEffect(() => {
@@ -83,6 +85,7 @@ export default function ClarifyPage() {
     setEvKind('online')
     setEvLocation('')
     setAi({ status: 'idle' })
+    setFormError(null)
   }, [item?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Make next action" defaults to on when the project has none yet.
@@ -190,11 +193,17 @@ export default function ClarifyPage() {
 
   const save = () => {
     const firstGoal = goal.trim() ? [{ id: crypto.randomUUID(), text: goal.trim() }] : undefined
-    const chosenProject =
-      projectId === NEW ? store.addProject({ name: newProjectName || title, goals: firstGoal }) : projectId ? projects.find((p) => p.id === projectId) : undefined
+    // Resolved only after the form has been validated, so a rejected save never leaves an empty project behind.
+    const resolveProject = () =>
+      projectId === NEW
+        ? store.addProject({ name: newProjectName.trim() || title.trim() || item.text.split('\n')[0], goals: firstGoal, private: isPrivate || undefined })
+        : projectId
+          ? projects.find((p) => p.id === projectId)
+          : undefined
     switch (kind) {
-      case 'task':
+      case 'task': {
         if (!title.trim()) return
+        const chosenProject = resolveProject()
         store.addTask({
           title,
           projectId: chosenProject?.id ?? null,
@@ -208,19 +217,28 @@ export default function ClarifyPage() {
           description: note || undefined,
         })
         break
+      }
       case 'project': {
         if (!newProjectName.trim() && !title.trim()) return
         const p = store.addProject({ name: newProjectName || item.text.split('\n')[0], goals: firstGoal, dueDate: due || undefined, notes: note || undefined, private: isPrivate || undefined })
         if (title.trim()) store.addTask({ title, projectId: p.id, status: 'next', priority, estimateMinutes: estimate })
         break
       }
-      case 'meeting':
+      case 'meeting': {
         if (!title.trim()) return
+        if (!isValidEventTimes({ date: evDate, start: evStart, end: evEnd })) {
+          setFormError(t('event.invalidTimes'))
+          return
+        }
+        const chosenProject = resolveProject()
         store.addEvent({ title, date: evDate, start: evStart, end: evEnd, kind: evKind, location: evLocation || undefined, projectId: chosenProject?.id ?? null })
         break
-      case 'someday':
+      }
+      case 'someday': {
+        const chosenProject = resolveProject()
         store.addTask({ title: title || item.text, projectId: chosenProject?.id ?? null, status: 'someday', priority: 'low', private: isPrivate || undefined, description: note || undefined })
         break
+      }
       case 'didIt':
       case 'trash':
         break
@@ -477,6 +495,7 @@ export default function ClarifyPage() {
             )}
 
             {kind === 'trash' && <p className="text-[13px] text-ink-2">{t('clarify.kinds.trashHint')}.</p>}
+            {formError && <p className="text-[12px] text-rose">{formError}</p>}
 
             <div className="mt-2 flex items-center justify-between border-t border-line pt-4">
               <Button variant="ghost" onClick={() => setStep('kind')}>

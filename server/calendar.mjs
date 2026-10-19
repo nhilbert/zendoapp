@@ -99,12 +99,27 @@ async function fetchCalendarView(accessToken, from, to) {
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/
 
+/**
+ * Only Zendo itself may talk to this service: requests must carry the custom
+ * header the app sets (a cross-site page cannot add it without a CORS preflight,
+ * which this service never grants), come from a loopback Host, and – if a
+ * browser sends an Origin – from a loopback origin.
+ */
+function isTrusted(req) {
+  const host = (req.headers.host ?? '').replace(/:\d+$/, '')
+  if (host !== '127.0.0.1' && host !== 'localhost') return false
+  const origin = req.headers.origin
+  if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) return false
+  return req.headers['x-zendo'] === '1'
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
   const send = (status, body) => {
     res.writeHead(status, { 'content-type': 'application/json' })
     res.end(JSON.stringify(body))
   }
+  if (!isTrusted(req)) return send(403, { error: 'forbidden' })
   try {
     if (req.method === 'GET' && url.pathname === '/api/calendar/status') {
       const account = await getAccount()

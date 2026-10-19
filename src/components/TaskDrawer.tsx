@@ -91,6 +91,9 @@ export default function TaskDrawer() {
           <Field label={t('task.estimate')}>
             <Select value={task.estimateMinutes ?? ''} onChange={(e) => updateTask(task.id, { estimateMinutes: e.target.value ? Number(e.target.value) : undefined })}>
               <option value="">—</option>
+              {task.estimateMinutes !== undefined && !(ESTIMATES as readonly number[]).includes(task.estimateMinutes) && (
+                <option value={task.estimateMinutes}>{fmtEstimate(task.estimateMinutes, t)}</option>
+              )}
               {ESTIMATES.map((m) => (
                 <option key={m} value={m}>
                   {fmtEstimate(m, t)}

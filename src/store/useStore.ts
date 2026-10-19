@@ -16,14 +16,17 @@ import type {
 } from '@/domain/types'
 import { DEFAULT_SETTINGS, PROJECT_COLORS } from '@/domain/types'
 import { buildSampleData } from '@/domain/sample'
-import { addDaysISO, daysBetween, nextOccurrence, todayISO } from '@/domain/dates'
+import { addDaysISO, daysBetween, nextOccurrenceFrom, todayISO } from '@/domain/dates'
+
+/** Schema version of persisted state and JSON exports. Bump together with migratePersisted. */
+export const STORE_VERSION = 4
 import { urgencyComparator } from '@/domain/selectors'
 
 const now = () => new Date().toISOString()
 const uid = () => crypto.randomUUID()
 
 export interface DataSnapshot {
-  version: 1
+  version: number
   exportedAt: string
   inbox: InboxItem[]
   projects: Project[]
@@ -91,6 +94,14 @@ interface State {
   importData: (snapshot: DataSnapshot) => void
 }
 
+/** True when the object looks like a Zendo export (arrays present, version numeric or missing). */
+export function isDataSnapshot(x: unknown): x is DataSnapshot {
+  if (!x || typeof x !== 'object') return false
+  const o = x as Record<string, unknown>
+  const arrays = ['inbox', 'projects', 'tasks', 'events', 'blocks']
+  return arrays.every((k) => Array.isArray(o[k])) && (o.version === undefined || typeof o.version === 'number')
+}
+
 function nextColor(projects: Project[]): ProjectColor {
   const used = new Map<ProjectColor, number>()
   for (const p of projects) used.set(p.color, (used.get(p.color) ?? 0) + 1)
@@ -122,12 +133,14 @@ export function migratePersisted(persisted: unknown, version: number): Partial<S
 /** Mark a task done; a recurring task spawns its next occurrence (dates shifted, kept in the future). */
 function completeWithRecurrence(tasks: Task[], target: Task): Task[] {
   const stamp = now()
-  let result = tasks.map((t) => (t.id === target.id ? { ...t, status: 'done' as TaskStatus, completedAt: stamp, updatedAt: stamp } : t))
+  let result = tasks.map((t) =>
+    t.id === target.id ? { ...t, status: 'done' as TaskStatus, statusBeforeDone: t.status === 'done' ? t.statusBeforeDone : t.status, completedAt: stamp, updatedAt: stamp } : t,
+  )
   if (target.recurrence && target.status !== 'done') {
     const today = todayISO()
     const base = target.dueDate ?? target.plannedDate ?? today
-    let next = nextOccurrence(base, target.recurrence)
-    while (next <= today) next = nextOccurrence(next, target.recurrence)
+    const anchor = target.recurrenceAnchor ?? base
+    const next = nextOccurrenceFrom(anchor, target.recurrence, base > today ? base : today)
     const shift = daysBetween(base, next)
     const clone: Task = {
       ...target,
@@ -138,11 +151,24 @@ function completeWithRecurrence(tasks: Task[], target: Task): Task[] {
       createdAt: stamp,
       updatedAt: stamp,
       completedAt: undefined,
+      statusBeforeDone: undefined,
+      recurrenceAnchor: anchor,
+      spawnedFrom: target.id,
       dueDate: target.dueDate ? addDaysISO(target.dueDate, shift) : undefined,
       plannedDate: target.plannedDate ? addDaysISO(target.plannedDate, shift) : undefined,
     }
     result = [...(clone.status === 'next' ? withSingleNext(result, clone.id, clone.projectId) : result), clone]
   }
+  return result
+}
+
+/** Undo a completion: drop the untouched occurrence it spawned and restore the previous status. */
+function uncomplete(tasks: Task[], target: Task, status?: TaskStatus): Task[] {
+  const restored = status ?? target.statusBeforeDone ?? 'todo'
+  let result = tasks
+    .filter((t) => !(t.spawnedFrom === target.id && t.status !== 'done'))
+    .map((t) => (t.id === target.id ? { ...t, status: restored, completedAt: undefined, statusBeforeDone: undefined, updatedAt: now() } : t))
+  if (restored === 'next') result = withSingleNext(result, target.id, target.projectId)
   return result
 }
 
@@ -236,6 +262,7 @@ export const useStore = create<State>()(
           const target = s.tasks.find((t) => t.id === id)
           if (!target) return {}
           if (status === 'done') return { tasks: completeWithRecurrence(s.tasks, target) }
+          if (target.status === 'done') return { tasks: uncomplete(s.tasks, target, status) }
           let tasks = s.tasks.map((t) =>
             t.id === id
               ? {
@@ -276,7 +303,7 @@ export const useStore = create<State>()(
           const target = s.tasks.find((t) => t.id === id)
           if (!target) return {}
           if (done) return { tasks: completeWithRecurrence(s.tasks, target) }
-          return { tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: 'todo', completedAt: undefined, updatedAt: now() } : t)) }
+          return { tasks: uncomplete(s.tasks, target) }
         }),
       addTaskNote: (id, text) =>
         set((s) => ({
@@ -343,7 +370,7 @@ export const useStore = create<State>()(
       exportData: () => {
         const s = get()
         return {
-          version: 1,
+          version: STORE_VERSION,
           exportedAt: now(),
           inbox: s.inbox,
           projects: s.projects,
@@ -354,7 +381,9 @@ export const useStore = create<State>()(
           settings: s.settings,
         }
       },
-      importData: (snap) =>
+      importData: (raw) => {
+        if (!isDataSnapshot(raw)) throw new Error('not_a_snapshot')
+        const snap = migratePersisted({ ...raw }, raw.version ?? 1)
         set({
           inbox: snap.inbox ?? [],
           projects: snap.projects ?? [],
@@ -364,12 +393,13 @@ export const useStore = create<State>()(
           reviews: snap.reviews ?? [],
           settings: { ...DEFAULT_SETTINGS, ...(snap.settings ?? {}) },
           seeded: true,
-        }),
+        })
+      },
     }),
     {
       name: 'zendo.v1',
       storage: createJSONStorage(() => localStorage),
-      version: 4,
+      version: STORE_VERSION,
       migrate: (persisted, version) => migratePersisted(persisted, version) as State,
       partialize: (s) => ({
         inbox: s.inbox,

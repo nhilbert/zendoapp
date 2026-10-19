@@ -1,5 +1,5 @@
 import type { Availability, CalendarEvent, EventKind, ISODate } from './types'
-import { toISODate } from './dates'
+import { addDaysISO, toISODate } from './dates'
 
 /**
  * Minimal iCalendar (.ics) parser – enough for a prototype import of an Outlook
@@ -58,7 +58,7 @@ function parseDateTime(value: string, params: Record<string, string>): { date: I
 }
 
 function unescapeText(v: string): string {
-  return v.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\;/g, ';').replace(/\\\\/g, '\\')
+  return v.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\')
 }
 
 export function guessKind(title: string, location?: string): EventKind {
@@ -85,6 +85,24 @@ function parseAvailability(busyStatus?: string, transp?: string): Availability {
   return (transp ?? '').toUpperCase() === 'TRANSPARENT' ? 'free' : 'busy'
 }
 
+/** Split a (possibly multi-day) event into per-day {date,start,end} entries. */
+export function expandDays(start: { date: ISODate; time?: string }, end: { date: ISODate; time?: string }): { date: ISODate; start: string; end: string }[] {
+  const allDay = !start.time
+  if (allDay) {
+    const lastExclusive = end.date > start.date ? end.date : addDaysISO(start.date, 1)
+    const days: { date: ISODate; start: string; end: string }[] = []
+    for (let d = start.date; d < lastExclusive && days.length < 366; d = addDaysISO(d, 1)) days.push({ date: d, start: '00:00', end: '23:59' })
+    return days
+  }
+  const startTime = start.time ?? '00:00'
+  const endTime = end.time ?? startTime
+  if (end.date <= start.date) return [{ date: start.date, start: startTime, end: endTime }]
+  const days = [{ date: start.date, start: startTime, end: '23:59' }]
+  for (let d = addDaysISO(start.date, 1); d < end.date && days.length < 366; d = addDaysISO(d, 1)) days.push({ date: d, start: '00:00', end: '23:59' })
+  if (endTime !== '00:00') days.push({ date: end.date, start: '00:00', end: endTime })
+  return days
+}
+
 export function parseIcs(text: string): IcsImportResult {
   const lines = unfold(text)
   const events: CalendarEvent[] = []
@@ -105,21 +123,20 @@ export function parseIcs(text: string): IcsImportResult {
         const end = cur.DTEND ? parseDateTime(cur.DTEND.value, cur.DTEND.params) : start
         const allDay = !start.time
         const uid = cur.UID?.value ?? `${summary}@${start.date}`
-        events.push({
-          id: crypto.randomUUID(),
+        const base = {
           title: summary,
-          date: start.date,
-          start: start.time ?? '00:00',
-          end: end.time ?? (allDay ? '23:59' : start.time ?? '00:00'),
           allDay,
           kind: guessKind(summary, location),
           availability: parseAvailability(cur['X-MICROSOFT-CDO-BUSYSTATUS']?.value, cur.TRANSP?.value),
           private: /^(PRIVATE|CONFIDENTIAL)$/i.test(cur.CLASS?.value ?? '') || undefined,
           location,
-          source: 'ics',
-          // UID plus start date so recurrence exceptions and moved meetings stay distinct and stable
-          externalId: `${uid}#${start.date}`,
-        })
+          source: 'ics' as const,
+        }
+        // Multi-day events become one entry per day (DTEND is exclusive for all-day events).
+        // UID plus date keeps recurrence exceptions and moved meetings distinct and stable.
+        for (const day of expandDays(start, end)) {
+          events.push({ id: crypto.randomUUID(), ...base, ...day, externalId: `${uid}#${day.date}` })
+        }
       }
       cur = null
       continue

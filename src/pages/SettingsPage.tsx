@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Locale } from '@/domain/types'
 import { parseIcs } from '@/domain/ics'
-import { useStore, type DataSnapshot } from '@/store/useStore'
+import { useStore } from '@/store/useStore'
+import { isHHMM } from '@/domain/dates'
 import { changeLocale } from '@/i18n'
 import { type AiProvider, type AiSettings, DEFAULT_MODELS, loadAiSettings, saveAiSettings } from '@/ai/settings'
 import { type M365Status, ServiceUnavailable, connect, disconnect, getStatus, syncCalendar } from '@/calendar/m365'
@@ -81,11 +82,23 @@ export default function SettingsPage() {
     URL.revokeObjectURL(url)
   }
 
+  const [jsonMsg, setJsonMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const onJson = async (file: File) => {
-    const snap = JSON.parse(await file.text()) as DataSnapshot
-    importData(snap)
-    changeLocale(snap.settings?.locale ?? settings.locale)
-    if (jsonRef.current) jsonRef.current.value = ''
+    try {
+      const raw: unknown = JSON.parse(await file.text())
+      if (!window.confirm(t('settings.importConfirm'))) return
+      importData(raw as Parameters<typeof importData>[0])
+      changeLocale(useStore.getState().settings.locale)
+      setJsonMsg({ ok: true, text: t('settings.importDone') })
+    } catch {
+      setJsonMsg({ ok: false, text: t('settings.importInvalid') })
+    } finally {
+      if (jsonRef.current) jsonRef.current.value = ''
+    }
+  }
+  /** Time inputs: ignore an emptied field instead of persisting '' (which would make every capacity NaN). */
+  const timeChange = (key: 'workdayStart' | 'workdayEnd' | 'budgetStart' | 'budgetEnd') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isHHMM(e.target.value)) updateSettings({ [key]: e.target.value })
   }
 
   const toggleDay = (d: number) => {
@@ -115,10 +128,10 @@ export default function SettingsPage() {
           <SectionLabel>{t('settings.workday')}</SectionLabel>
           <div className="grid grid-cols-3 gap-3">
             <Field label={t('settings.start')}>
-              <Input type="time" step={900} value={settings.workdayStart} onChange={(e) => updateSettings({ workdayStart: e.target.value })} />
+              <Input type="time" step={900} value={settings.workdayStart} onChange={timeChange('workdayStart')} />
             </Field>
             <Field label={t('settings.end')}>
-              <Input type="time" step={900} value={settings.workdayEnd} onChange={(e) => updateSettings({ workdayEnd: e.target.value })} />
+              <Input type="time" step={900} value={settings.workdayEnd} onChange={timeChange('workdayEnd')} />
             </Field>
             <Field label={t('settings.capacity')}>
               <Input type="number" min={1} max={16} step={0.5} value={settings.dayCapacityHours} onChange={(e) => updateSettings({ dayCapacityHours: Number(e.target.value) || 8 })} />
@@ -126,10 +139,10 @@ export default function SettingsPage() {
           </div>
           <div className="mt-3 grid grid-cols-3 gap-3">
             <Field label={t('settings.budgetStart')} hint={t('settings.budgetHint')}>
-              <Input type="time" step={900} value={settings.budgetStart} onChange={(e) => updateSettings({ budgetStart: e.target.value })} />
+              <Input type="time" step={900} value={settings.budgetStart} onChange={timeChange('budgetStart')} />
             </Field>
             <Field label={t('settings.budgetEnd')}>
-              <Input type="time" step={900} value={settings.budgetEnd} onChange={(e) => updateSettings({ budgetEnd: e.target.value })} />
+              <Input type="time" step={900} value={settings.budgetEnd} onChange={timeChange('budgetEnd')} />
             </Field>
           </div>
           <div className="mt-3">
@@ -224,6 +237,7 @@ export default function SettingsPage() {
           <div className="flex flex-wrap gap-2">
             <Button onClick={download}>{t('settings.export')}</Button>
             <Button onClick={() => jsonRef.current?.click()}>{t('settings.import')}</Button>
+            {jsonMsg && <span className={cx('fade-in self-center text-[12px]', jsonMsg.ok ? 'text-accent' : 'text-rose')}>{jsonMsg.text}</span>}
             <Button
               variant="ghost"
               onClick={() => {

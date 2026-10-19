@@ -272,7 +272,8 @@
       "other": "Other"
     },
     "availability": "Blocks time",
-    "freeTag": "free"
+    "freeTag": "free",
+    "invalidTimes": "Please enter a date, and an end time after the start time."
   },
   "review": {
     "title": "Review",
@@ -345,7 +346,10 @@
     "shortcutPrivate": "hide / show private items",
     "budgetStart": "Count meetings from",
     "budgetEnd": "until",
-    "budgetHint": "outside this window (evenings) meetings do not reduce the day"
+    "budgetHint": "outside this window (evenings) meetings do not reduce the day",
+    "importConfirm": "Replace all current data with the contents of this file?",
+    "importDone": "Data imported.",
+    "importInvalid": "This file is not a Zendo export. Nothing was changed."
   },
   "weekday": {
     "1": "Mon",

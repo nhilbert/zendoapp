@@ -272,7 +272,8 @@
       "other": "Sonstiges"
     },
     "availability": "Blockiert Zeit",
-    "freeTag": "frei"
+    "freeTag": "frei",
+    "invalidTimes": "Bitte ein Datum und eine Endzeit nach der Startzeit angeben."
   },
   "review": {
     "title": "Rückblick",
@@ -345,7 +346,10 @@
     "shortcutPrivate": "Privates aus-/einblenden",
     "budgetStart": "Termine zählen ab",
     "budgetEnd": "bis",
-    "budgetHint": "außerhalb (z. B. abends) verringern Termine das Tagesbudget nicht"
+    "budgetHint": "außerhalb (z. B. abends) verringern Termine das Tagesbudget nicht",
+    "importConfirm": "Alle aktuellen Daten durch den Inhalt dieser Datei ersetzen?",
+    "importDone": "Daten importiert.",
+    "importInvalid": "Diese Datei ist kein Zendo-Export. Es wurde nichts geändert."
   },
   "weekday": {
     "1": "Mo",

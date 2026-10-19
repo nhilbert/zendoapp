@@ -21,14 +21,15 @@ export class ServiceUnavailable extends Error {
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, init)
+    res = await fetch(path, { ...init, headers: { ...(init?.headers ?? {}), 'x-zendo': '1' } })
   } catch {
     throw new ServiceUnavailable()
   }
-  if (res.status >= 500) throw new ServiceUnavailable()
+  // 502/503/504 come from the Vite proxy when the service is not running; a 500 is a real error with a message.
+  if (res.status === 502 || res.status === 503 || res.status === 504) throw new ServiceUnavailable()
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(body.error ?? res.statusText)
+    throw new Error(body.error ?? `${res.status} ${res.statusText}`)
   }
   return (await res.json()) as T
 }

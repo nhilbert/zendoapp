@@ -71,3 +71,43 @@ describe('private appointments', () => {
     expect(r.events.find((e) => e.title === 'Public')!.private).toBeUndefined()
   })
 })
+
+describe('multi-day events and escapes', () => {
+  it('splits overnight and multi-day events per day and unescapes semicolons', () => {
+    const r = parseIcs(`BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:o1
+SUMMARY:Dinner\; late
+DTSTART:20261020T200000
+DTEND:20261021T010000
+END:VEVENT
+BEGIN:VEVENT
+UID:w2
+SUMMARY:Two-day workshop
+DTSTART:20261022T090000
+DTEND:20261023T170000
+END:VEVENT
+BEGIN:VEVENT
+UID:h3
+SUMMARY:Trip
+DTSTART;VALUE=DATE:20261026
+DTEND;VALUE=DATE:20261029
+END:VEVENT
+END:VCALENDAR
+`)
+    const dinner = r.events.filter((e) => e.externalId?.startsWith('o1#'))
+    expect(dinner.map((e) => [e.date, e.start, e.end])).toEqual([
+      ['2026-10-20', '20:00', '23:59'],
+      ['2026-10-21', '00:00', '01:00'],
+    ])
+    expect(dinner[0].title).toBe('Dinner; late')
+    const ws = r.events.filter((e) => e.externalId?.startsWith('w2#'))
+    expect(ws.map((e) => [e.date, e.start, e.end])).toEqual([
+      ['2026-10-22', '09:00', '23:59'],
+      ['2026-10-23', '00:00', '17:00'],
+    ])
+    const trip = r.events.filter((e) => e.externalId?.startsWith('h3#'))
+    expect(trip.map((e) => e.date)).toEqual(['2026-10-26', '2026-10-27', '2026-10-28'])
+    expect(trip.every((e) => e.allDay)).toBe(true)
+  })
+})

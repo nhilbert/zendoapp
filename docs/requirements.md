@@ -194,4 +194,5 @@ Answered items are struck through; see section 9 for the decisions.
 - Microsoft 365 app registration done by the owner; the local calendar service syncs the calendar (connect / sync / disconnect in Settings, sync on start).
 - Private vs. work: mark tasks/projects private and hide them with one toggle while at work.
 - Project lifecycle merged with the owner's request: active / planned / someday / archived (old on hold → planned, done → archived).
+- Hosting on the go: wanted later (phone access, computer off); needs iteration 2 first. Options and a recommendation in `architecture.md` section 11.
 - Kanban cards can be sorted freely. Trade-off accepted: manual order replaces automatic priority/due sorting (a card dragged above a high-priority card would otherwise snap back); "sort by urgency" per column keeps the automatic order one click away.

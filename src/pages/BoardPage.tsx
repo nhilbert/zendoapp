@@ -44,7 +44,6 @@ export default function BoardPage() {
   const sortColumnByUrgency = useStore((s) => s.sortColumnByUrgency)
   const addTask = useStore((s) => s.addTask)
   const openTask = useUi((s) => s.openTask)
-  const projectMap = useProjectMap()
   const sensors = useDndSensors()
   const [filter, setFilter] = useState<string>('')
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -164,20 +163,21 @@ export default function BoardPage() {
       </DndContext>
     </div>
   )
+}
 
-  function Card({ task, dragging }: { task: Task; dragging?: boolean }) {
-    const project = task.projectId ? projectMap.get(task.projectId) : null
-    return (
-      <div
-        style={projectVars(project?.color ?? null)}
-        className={cx('card px-3 py-2.5 transition-shadow', dragging ? 'rotate-[0.5deg] shadow-[var(--shadow)]' : 'hover:shadow-[var(--shadow)]')}
-      >
-        {task.priority === 'high' && task.status !== 'done' && <span className="mb-1 block h-1 w-6 rounded-full bg-amber" />}
-        <div className={cx('text-[13.5px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
-        <TaskMeta task={task} className="mt-1.5" />
-      </div>
-    )
-  }
+function Card({ task, dragging }: { task: Task; dragging?: boolean }) {
+  const projectMap = useProjectMap()
+  const project = task.projectId ? projectMap.get(task.projectId) : null
+  return (
+    <div
+      style={projectVars(project?.color ?? null)}
+      className={cx('card px-3 py-2.5 transition-shadow', dragging ? 'rotate-[0.5deg] shadow-[var(--shadow)]' : 'hover:shadow-[var(--shadow)]')}
+    >
+      {task.priority === 'high' && task.status !== 'done' && <span className="mb-1 block h-1 w-6 rounded-full bg-amber" />}
+      <div className={cx('text-[13.5px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
+      <TaskMeta task={task} className="mt-1.5" />
+    </div>
+  )
 }
 
 /** A card's drop target: shows a thin line above or below while another card hovers over it. */

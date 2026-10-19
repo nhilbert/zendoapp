@@ -131,3 +131,50 @@ describe('manual ordering', () => {
     expect(tasks.find((t) => t.id === n2.id)!.status).toBe('next')
   })
 })
+
+describe('undoing a completion', () => {
+  it('removes the spawned occurrence and restores the previous status', () => {
+    const s = useStore.getState()
+    const chore = s.addTask({ title: 'Invoices', projectId: null, status: 'next', recurrence: 'monthly', dueDate: addDaysISO(todayISO(), 3) })
+    s.completeTask(chore.id)
+    expect(useStore.getState().tasks.filter((t) => t.title === 'Invoices')).toHaveLength(2)
+    s.completeTask(chore.id, false)
+    const left = useStore.getState().tasks.filter((t) => t.title === 'Invoices')
+    expect(left).toHaveLength(1)
+    expect(left[0].status).toBe('next')
+    expect(left[0].completedAt).toBeUndefined()
+  })
+  it('also cleans up when the status is changed away from done on the board', () => {
+    const s = useStore.getState()
+    const chore = s.addTask({ title: 'Weekly', projectId: null, status: 'todo', recurrence: 'weekly', dueDate: addDaysISO(todayISO(), 1) })
+    s.setTaskStatus(chore.id, 'done')
+    s.setTaskStatus(chore.id, 'waiting')
+    const left = useStore.getState().tasks.filter((t) => t.title === 'Weekly')
+    expect(left).toHaveLength(1)
+    expect(left[0].status).toBe('waiting')
+  })
+})
+
+describe('JSON import', () => {
+  it('migrates old exports and rejects foreign files', () => {
+    const s = useStore.getState()
+    s.importData({
+      version: 1,
+      exportedAt: '',
+      inbox: [],
+      projects: [{ id: 'p', name: 'Old', status: 'on_hold' as never, outcome: 'Goal text', color: 'sage', createdAt: '', updatedAt: '' } as never],
+      tasks: [],
+      events: [],
+      blocks: [],
+      reviews: [],
+      settings: { locale: 'de', workdayStart: '09:00', workdayEnd: '17:00', workDays: [1, 2, 3], dayCapacityHours: 6 } as never,
+    })
+    const st = useStore.getState()
+    expect(st.projects[0].status).toBe('planned')
+    expect(st.projects[0].goals?.[0].text).toBe('Goal text')
+    expect(st.settings.budgetStart).toBe('07:00')
+    expect(st.settings.workdayStart).toBe('09:00')
+    expect(() => s.importData({ name: 'zendo', version: '1.0.0' } as never)).toThrow()
+    expect(useStore.getState().projects).toHaveLength(1)
+  })
+})

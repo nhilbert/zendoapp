@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Availability, CalendarEvent, EventKind } from '@/domain/types'
 import { AVAILABILITIES, EVENT_KINDS } from '@/domain/types'
-import { todayISO } from '@/domain/dates'
+import { isHHMM, isISODate, todayISO } from '@/domain/dates'
 import { useStore } from '@/store/useStore'
 import { useUi } from '@/store/useUi'
 import { Button, Checkbox, Field, Input, Modal, Select } from './ui'
@@ -10,6 +10,13 @@ import { Button, Checkbox, Field, Input, Modal, Select } from './ui'
 type Draft = Omit<CalendarEvent, 'id' | 'source'>
 
 const EMPTY: Draft = { title: '', date: todayISO(), start: '09:00', end: '10:00', kind: 'online', availability: 'busy', location: '', projectId: null, allDay: false }
+
+/** Date must be a real date; unless all-day, start and end must be times and end after start. */
+export function isValidEventTimes(d: { date: string; start: string; end: string; allDay?: boolean }): boolean {
+  if (!isISODate(d.date)) return false
+  if (d.allDay) return true
+  return isHHMM(d.start) && isHHMM(d.end) && d.end > d.start
+}
 
 export default function EventDialog() {
   const { t } = useTranslation()
@@ -21,6 +28,7 @@ export default function EventDialog() {
   const updateEvent = useStore((s) => s.updateEvent)
   const deleteEvent = useStore((s) => s.deleteEvent)
   const [draft, setDraft] = useState<Draft>(EMPTY)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!ui) return
@@ -36,8 +44,13 @@ export default function EventDialog() {
 
   const save = () => {
     if (!draft.title.trim()) return
-    if (existing) updateEvent(existing.id, draft)
-    else addEvent(draft)
+    if (!isValidEventTimes(draft)) {
+      setError(t('event.invalidTimes'))
+      return
+    }
+    const clean = draft.allDay ? { ...draft, start: '00:00', end: '23:59' } : draft
+    if (existing) updateEvent(existing.id, clean)
+    else addEvent(clean)
     close()
   }
 
@@ -110,6 +123,7 @@ export default function EventDialog() {
             </Select>
           </Field>
         </div>
+        {error && <p className="text-[12px] text-rose">{error}</p>}
         <div className="mt-2 flex items-center justify-between">
           {existing ? (
             <Button

@@ -104,6 +104,12 @@ export interface Task {
   plannedStart?: HHMM
   waitingFor?: string
   recurrence?: Recurrence
+  /** First due/planned date of the recurring series; keeps "the 31st" from drifting after February. */
+  recurrenceAnchor?: ISODate
+  /** Id of the completed task this occurrence was spawned from (removed again if that completion is undone). */
+  spawnedFrom?: string
+  /** Status the task had before it was completed, restored when un-completed. */
+  statusBeforeDone?: TaskStatus
   /** Private (non-work) task; hidden when "hide private" is on. */
   private?: boolean
   notes: TaskNote[]
