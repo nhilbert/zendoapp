@@ -1,0 +1,133 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { migratePersisted, useStore } from './useStore'
+import type { CalendarEvent } from '@/domain/types'
+import { addDaysISO, todayISO } from '@/domain/dates'
+
+const ics = (p: Partial<CalendarEvent>): CalendarEvent => ({ id: crypto.randomUUID(), title: 't', date: '2026-10-20', start: '09:00', end: '10:00', kind: 'online', source: 'ics', ...p })
+
+beforeEach(() => useStore.getState().clearAll())
+
+describe('importEvents', () => {
+  it('replaces the previous import, keeps overrides and manual events', () => {
+    const s = useStore.getState()
+    s.addEvent({ title: 'manual', date: '2026-10-20', start: '08:00', end: '08:30', kind: 'coaching' })
+    s.importEvents([ics({ title: 'A', externalId: 'a#2026-10-20' }), ics({ title: 'B', externalId: 'b#2026-10-20' })], 'ics')
+    const b = useStore.getState().events.find((e) => e.title === 'B')!
+    s.updateEvent(b.id, { kind: 'workshop' })
+    const r = s.importEvents([ics({ title: 'B moved', externalId: 'b#2026-10-20', start: '14:00', end: '15:00' }), ics({ title: 'C', externalId: 'c#2026-10-21' })], 'ics')
+    const events = useStore.getState().events
+    expect(r).toEqual({ total: 2, kept: 1, removed: 1 })
+    expect(events.map((e) => e.title).sort()).toEqual(['B moved', 'C', 'manual'])
+    const b2 = events.find((e) => e.title === 'B moved')!
+    expect(b2.id).toBe(b.id)
+    expect(b2.kind).toBe('workshop')
+    expect(b2.start).toBe('14:00')
+  })
+})
+
+describe('next-action invariant', () => {
+  it('keeps exactly one next action per project', () => {
+    const s = useStore.getState()
+    const p = s.addProject({ name: 'P' })
+    const t1 = s.addTask({ title: '1', projectId: p.id, status: 'next' })
+    const t2 = s.addTask({ title: '2', projectId: p.id })
+    s.setTaskStatus(t2.id, 'next')
+    const tasks = useStore.getState().tasks
+    expect(tasks.find((t) => t.id === t1.id)!.status).toBe('todo')
+    expect(tasks.filter((t) => t.projectId === p.id && t.status === 'next')).toHaveLength(1)
+  })
+})
+
+describe('recurring chores', () => {
+  it('spawns the next occurrence in the future when completed', () => {
+    const s = useStore.getState()
+    const today = todayISO()
+    const chore = s.addTask({ title: 'Invoices', projectId: null, status: 'next', recurrence: 'monthly', dueDate: addDaysISO(today, -40), plannedDate: addDaysISO(today, -42) })
+    s.completeTask(chore.id)
+    const tasks = useStore.getState().tasks
+    expect(tasks.find((t) => t.id === chore.id)!.status).toBe('done')
+    const next = tasks.find((t) => t.id !== chore.id && t.title === 'Invoices')!
+    expect(next.status).toBe('next')
+    expect(next.dueDate! > today).toBe(true)
+    expect(next.plannedDate! < next.dueDate!).toBe(true)
+    expect(next.notes).toEqual([])
+    // completing the new one again does not duplicate the old one
+    s.completeTask(next.id)
+    expect(useStore.getState().tasks.filter((t) => t.title === 'Invoices')).toHaveLength(3)
+  })
+  it('does not recur through the board when a task has no recurrence', () => {
+    const s = useStore.getState()
+    const t = s.addTask({ title: 'once', projectId: null })
+    s.setTaskStatus(t.id, 'done')
+    expect(useStore.getState().tasks.filter((x) => x.title === 'once')).toHaveLength(1)
+  })
+})
+
+describe('persisted-state migrations', () => {
+  it('maps old statuses and turns a desired outcome into the first goal', () => {
+    const v1 = {
+      projects: [
+        { id: 'a', name: 'A', status: 'on_hold', outcome: 'Done means X', color: 'sage', createdAt: '', updatedAt: '' },
+        { id: 'b', name: 'B', status: 'done', color: 'clay', createdAt: '', updatedAt: '', goals: [{ id: 'g', text: 'Keep me' }], outcome: 'ignored' },
+      ],
+    }
+    const out = migratePersisted(v1, 1) as { projects: { status: string; goals?: { text: string }[]; outcome?: string }[] }
+    expect(out.projects[0].status).toBe('planned')
+    expect(out.projects[0].goals?.map((g) => g.text)).toEqual(['Done means X'])
+    expect(out.projects[0].outcome).toBeUndefined()
+    expect(out.projects[1].status).toBe('archived')
+    expect(out.projects[1].goals?.map((g) => g.text)).toEqual(['Keep me'])
+  })
+})
+
+describe('private override on re-import', () => {
+  it('keeps a manual private flag when the same event is imported again', () => {
+    const s = useStore.getState()
+    s.importEvents([ics({ title: 'Lunch', externalId: 'l#2026-10-20' })], 'm365')
+    const lunch = useStore.getState().events.find((e) => e.title === 'Lunch')!
+    s.updateEvent(lunch.id, { private: true })
+    s.importEvents([ics({ title: 'Lunch', externalId: 'l#2026-10-20' })], 'm365')
+    expect(useStore.getState().events.find((e) => e.title === 'Lunch')!.private).toBe(true)
+  })
+})
+
+describe('manual ordering', () => {
+  it('reorders within a column, moves across columns at a position, and re-sorts by urgency', () => {
+    const s = useStore.getState()
+    const today = todayISO()
+    const a = s.addTask({ title: 'a', projectId: null, status: 'todo', priority: 'low' })
+    const b = s.addTask({ title: 'b', projectId: null, status: 'todo', priority: 'high', dueDate: addDaysISO(today, 13) })
+    const c = s.addTask({ title: 'c', projectId: null, status: 'todo', priority: 'low', dueDate: addDaysISO(today, 6) })
+    const titles = (status: string) =>
+      useStore
+        .getState()
+        .tasks.filter((t) => t.status === status)
+        .sort((x, y) => x.order - y.order)
+        .map((t) => t.title)
+    expect(titles('todo')).toEqual(['a', 'b', 'c'])
+    s.reorderTask(c.id, 'todo', a.id) // c before a
+    expect(titles('todo')).toEqual(['c', 'a', 'b'])
+    s.reorderTask(a.id, 'todo', null) // a to the end
+    expect(titles('todo')).toEqual(['c', 'b', 'a'])
+    const w = s.addTask({ title: 'w', projectId: null, status: 'waiting' })
+    s.reorderTask(b.id, 'waiting', w.id) // b into waiting, before w
+    expect(titles('waiting')).toEqual(['b', 'w'])
+    expect(titles('todo')).toEqual(['c', 'a'])
+    s.reorderTask(b.id, 'todo', null)
+    s.addTask({ title: 'far', projectId: null, status: 'todo', priority: 'high', dueDate: addDaysISO(today, 40) })
+    s.addTask({ title: 'hi', projectId: null, status: 'todo', priority: 'high' })
+    s.sortColumnByUrgency('todo')
+    // due within 14 days by date (c before b, despite priority), then undated by priority (hi before a), then far-off due dates
+    expect(titles('todo')).toEqual(['c', 'b', 'hi', 'a', 'far'])
+  })
+  it('keeps the next-action invariant when dropping into the next column', () => {
+    const s = useStore.getState()
+    const p = s.addProject({ name: 'P' })
+    const n1 = s.addTask({ title: 'n1', projectId: p.id, status: 'next' })
+    const n2 = s.addTask({ title: 'n2', projectId: p.id, status: 'todo' })
+    s.reorderTask(n2.id, 'next', n1.id)
+    const tasks = useStore.getState().tasks
+    expect(tasks.find((t) => t.id === n1.id)!.status).toBe('todo')
+    expect(tasks.find((t) => t.id === n2.id)!.status).toBe('next')
+  })
+})

@@ -1,0 +1,38 @@
+# Dependencies & build output
+node_modules/
+dist/
+dist-ssr/
+*.local
+*.tsbuildinfo
+
+# Private data – NEVER commit personal data, calendars, tokens or exports
+data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.ics
+*.ics.txt
+.env
+.env.*
+!.env.example
+*.token
+*.tokens.json
+msal-cache*.json
+exports/
+backups/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/settings.local.json

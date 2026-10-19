@@ -1,0 +1,215 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* ---------------------------------------------------------------------------
+   Design tokens. One warm neutral base, one accent (sage) reserved for the
+   "next action" and selection, two semantic colours (amber: due today / needs
+   attention, rose: overdue). Everything else is hierarchy via greys & spacing.
+   --------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --paper: #faf9f6;
+  --surface: #ffffff;
+  --surface-2: #f3f1ec;
+  --surface-3: #e9e6df;
+  --ink: #23221f;
+  --ink-2: #6b6963;
+  --ink-3: #a3a09a;
+  --line: #e9e7e1;
+  --line-2: #d8d5cd;
+  --accent: #4f6f5f;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6eee9;
+  --amber: #b07a2a;
+  --amber-soft: #f7eedd;
+  --rose: #a9513f;
+  --rose-soft: #f6e4df;
+  --c-sage: #5f8a74;
+  --c-clay: #b5684a;
+  --c-slate: #5b7a99;
+  --c-plum: #8a5c86;
+  --c-ochre: #b08a2e;
+  --c-moss: #6e8a3a;
+  --c-dusk: #6a6a9a;
+  --c-sand: #9a8265;
+  --c-neutral: #9a978f;
+  --shadow: 0 1px 2px rgba(30, 28, 20, 0.04), 0 12px 32px -16px rgba(30, 28, 20, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #171716;
+    --surface: #1e1e1c;
+    --surface-2: #262624;
+    --surface-3: #2f2f2c;
+    --ink: #eae8e2;
+    --ink-2: #a5a29b;
+    --ink-3: #6f6d67;
+    --line: #2c2c29;
+    --line-2: #3b3a36;
+    --accent: #8db49f;
+    --accent-ink: #171716;
+    --accent-soft: #233029;
+    --amber: #d3a05a;
+    --amber-soft: #332a1c;
+    --rose: #d0756a;
+    --rose-soft: #35221f;
+    --c-sage: #86b09a;
+    --c-clay: #d0876a;
+    --c-slate: #86a4c2;
+    --c-plum: #b08aac;
+    --c-ochre: #d0ac58;
+    --c-moss: #9db56a;
+    --c-dusk: #9a9ac8;
+    --c-sand: #bba488;
+    --c-neutral: #7a786f;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+  }
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-rose: var(--rose);
+  --color-rose-soft: var(--rose-soft);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.5;
+    font-feature-settings: "cv11", "ss03", "calt";
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-2) transparent;
+  }
+  input[type="date"],
+  input[type="time"] {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .pc-dot {
+    background: var(--pc);
+  }
+  .pc-dark {
+    background: color-mix(in oklab, var(--pc) 60%, var(--ink));
+  }
+  .pc-soft {
+    background: color-mix(in oklab, var(--pc) 13%, transparent);
+  }
+  .pc-text {
+    color: var(--pc);
+  }
+  .pc-line {
+    border-color: color-mix(in oklab, var(--pc) 50%, transparent);
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+  .field {
+    height: 36px;
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 0 12px;
+    font-size: 14px;
+    transition: border-color 120ms ease;
+  }
+  .field::placeholder {
+    color: var(--ink-3);
+  }
+  .field:focus {
+    outline: none;
+    border-color: color-mix(in oklab, var(--accent) 60%, var(--line));
+  }
+  .field-bare {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .field-bare:hover {
+    background: var(--surface-2);
+  }
+  .field-bare:focus {
+    outline: none;
+    background: var(--surface);
+    border-color: var(--line);
+  }
+  .fade-in {
+    animation: fade-in 180ms ease-out;
+  }
+  .strike {
+    text-decoration: line-through;
+    text-decoration-color: var(--ink-3);
+    color: var(--ink-3);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
