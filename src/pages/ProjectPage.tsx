@@ -9,6 +9,7 @@ import { nextActionOf, sortTasks } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { Button, Checkbox, IconButton, Input, Select, SectionLabel, Textarea, cx } from '@/components/ui'
 import { ProjectDot, TaskRow, projectVars, useLocale } from '@/components/TaskBits'
+import { ProjectMeetings } from '@/components/ProjectMeetings'
 
 export default function ProjectPage() {
   const { t } = useTranslation()
@@ -217,6 +218,8 @@ export default function ProjectPage() {
           </details>
         )}
       </div>
+
+      <ProjectMeetings project={project} readOnly={archived} />
 
       <div className="mt-10">
         <SectionLabel>{t('project.plannedTime')}</SectionLabel>

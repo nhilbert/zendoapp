@@ -1,4 +1,4 @@
-import type { BlockSize, CalendarEvent, ISODate, PlanBlock, Project, Settings, Task } from './types.ts'
+import type { BlockSize, CalendarEvent, HHMM, ISODate, PlanBlock, Project, Settings, Task } from './types.ts'
 import { DEFAULT_SETTINGS } from './types.ts'
 import { compareISO, daysBetween, durationMinutes, hhmmToMinutes, isHHMM, isoWeekday, toISODate } from './dates.ts'
 
@@ -78,6 +78,13 @@ export function eventsOn<E extends CalendarEvent>(events: E[], date: ISODate): E
   return events
     .filter((e) => e.date === date)
     .sort((a, b) => (a.allDay ? -1 : b.allDay ? 1 : hhmmToMinutes(a.start) - hhmmToMinutes(b.start)))
+}
+
+/** Meetings still ahead (today's only until they end), in time order; `projectId` null = meetings without a project (PRJ-10, PRJ-11). */
+export function upcomingMeetings<E extends CalendarEvent>(events: E[], projectId: string | null, today: ISODate, now: HHMM): E[] {
+  return events
+    .filter((e) => (e.projectId ?? null) === projectId && (e.date > today || (e.date === today && (e.allDay || e.end > now))))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.allDay ? -1 : b.allDay ? 1 : a.start.localeCompare(b.start)))
 }
 
 export function blocksOn(blocks: PlanBlock[], date: ISODate): PlanBlock[] {

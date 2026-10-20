@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CalendarEvent, PlanBlock, Project, Settings, Task } from './types'
 import { DEFAULT_SETTINGS } from './types'
-import { candidatesForDay, dayCapacity, isOverplanned, leftoverTasks, visibleBlocks } from './selectors'
+import { candidatesForDay, dayCapacity, isOverplanned, leftoverTasks, upcomingMeetings, visibleBlocks } from './selectors'
 import { isHHMM, isISODate, nextOccurrence } from './dates'
 
 const settings: Settings = { ...DEFAULT_SETTINGS, workdayStart: '08:00', workdayEnd: '18:00', dayCapacityHours: 8 }
@@ -177,5 +177,21 @@ describe('selector review regressions', () => {
     expect(isISODate('2026-1-01')).toBe(false)
     expect(isHHMM('23:59')).toBe(true)
     expect(isHHMM('99:99')).toBe(false)
+  })
+})
+
+describe('upcomingMeetings', () => {
+  it("lists a project's meetings from now on in time order, today's only until they end", () => {
+    const events = [
+      ev({ id: 'later', projectId: 'p', date: '2026-10-22', start: '09:00' }),
+      ev({ id: 'ended', projectId: 'p', date: DATE, start: '08:00', end: '09:00' }),
+      ev({ id: 'running', projectId: 'p', date: DATE, start: '09:30', end: '11:00' }),
+      ev({ id: 'allDay', projectId: 'p', date: '2026-10-22', allDay: true, start: '00:00', end: '23:59' }),
+      ev({ id: 'past', projectId: 'p', date: '2026-10-19' }),
+      ev({ id: 'other', projectId: 'q', date: '2026-10-21' }),
+      ev({ id: 'none', date: '2026-10-21' }),
+    ]
+    expect(upcomingMeetings(events, 'p', DATE, '10:00').map((e) => e.id)).toEqual(['running', 'allDay', 'later'])
+    expect(upcomingMeetings(events, null, DATE, '10:00').map((e) => e.id)).toEqual(['none'])
   })
 })
