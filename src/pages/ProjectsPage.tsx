@@ -1,20 +1,22 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Lock, Plus } from 'lucide-react'
+import { CalendarClock, Lock, Plus } from 'lucide-react'
 import type { Project } from '@/domain/types'
-import { compareISO } from '@/domain/dates'
-import { nextActionOf, openTasksOfProject } from '@/domain/selectors'
+import { compareISO, fmtTime, nowHHMM, todayISO } from '@/domain/dates'
+import { nextActionOf, openTasksOfProject, upcomingMeetings } from '@/domain/selectors'
 import type { Task } from '@/domain/types'
 import { useStore } from '@/store/useStore'
-import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
+import { useVisibleEvents, useVisibleProjects, useVisibleTasks, type VisibleEvent } from '@/store/visible'
 import { Button, Chip, Empty, Input, PageHeader, SectionLabel } from '@/components/ui'
-import { ProjectDot, useRelDay } from '@/components/TaskBits'
+import { ProjectDot, useLocale, useRelDay } from '@/components/TaskBits'
 
 export default function ProjectsPage() {
   const { t } = useTranslation()
   const projects = useVisibleProjects({ includeArchived: true })
   const tasks = useVisibleTasks()
+  // masked private meetings show no project (CAL-7)
+  const events = useVisibleEvents().filter((e) => !e.masked)
   const addProject = useStore((s) => s.addProject)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -56,7 +58,7 @@ export default function ProjectsPage() {
 
       <div className="flex flex-col gap-2">
         {active.map((p) => (
-          <ProjectRow key={p.id} project={p} tasks={tasks} />
+          <ProjectRow key={p.id} project={p} tasks={tasks} events={events} />
         ))}
       </div>
 
@@ -65,7 +67,7 @@ export default function ProjectsPage() {
           <SectionLabel className="mt-10">{t('projects.planned')}</SectionLabel>
           <div className="flex flex-col gap-2">
             {planned.map((p) => (
-              <ProjectRow key={p.id} project={p} tasks={tasks} />
+              <ProjectRow key={p.id} project={p} tasks={tasks} events={events} />
             ))}
           </div>
         </>
@@ -76,7 +78,7 @@ export default function ProjectsPage() {
           <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">{t('projects.inactive')}</summary>
           <div className="mt-3 flex flex-col gap-2">
             {inactive.map((p) => (
-              <ProjectRow key={p.id} project={p} tasks={tasks} muted />
+              <ProjectRow key={p.id} project={p} tasks={tasks} events={events} muted />
             ))}
           </div>
         </details>
@@ -86,10 +88,12 @@ export default function ProjectsPage() {
   )
 }
 
-function ProjectRow({ project, tasks, muted }: { project: Project; tasks: Task[]; muted?: boolean }) {
+function ProjectRow({ project, tasks, events, muted }: { project: Project; tasks: Task[]; events: VisibleEvent[]; muted?: boolean }) {
   const { t } = useTranslation()
   const rel = useRelDay()
+  const locale = useLocale()
   const next = nextActionOf(tasks, project.id)
+  const meeting = upcomingMeetings(events, project.id, todayISO(), nowHHMM())[0]
   const open = openTasksOfProject(tasks, project.id).length
   return (
       <Link to={`/projects/${project.id}`} className={`card flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-surface-2 md:px-5 md:py-4 ${muted ? 'opacity-70' : ''}`}>
@@ -110,6 +114,12 @@ function ProjectRow({ project, tasks, muted }: { project: Project; tasks: Task[]
               <span className="text-amber">{t('projects.needsNext')}</span>
             ) : null}
           </div>
+          {meeting && (
+            <div className="tnum mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
+              <CalendarClock size={12} className="shrink-0" />
+              <span className="truncate">{t('projects.nextMeeting', { when: `${rel(meeting.date)}${meeting.allDay ? '' : ` ${fmtTime(meeting.start, locale)}`}` })}</span>
+            </div>
+          )}
         </div>
         <div className="hidden shrink-0 items-center gap-2 text-[12px] text-ink-3 sm:flex">
           {project.dueDate && <span>{t('projects.due', { date: rel(project.dueDate) })}</span>}

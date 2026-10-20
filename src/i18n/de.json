@@ -156,6 +156,7 @@
     "open_one": "{{count}} offen",
     "open_other": "{{count}} offen",
     "due": "fällig {{date}}",
+    "nextMeeting": "Nächster Termin: {{when}}",
     "planned": "Geplant"
   },
   "project": {

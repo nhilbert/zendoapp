@@ -156,6 +156,7 @@
     "open_one": "{{count}} open",
     "open_other": "{{count}} open",
     "due": "due {{date}}",
+    "nextMeeting": "Next meeting: {{when}}",
     "planned": "Planned"
   },
   "project": {
