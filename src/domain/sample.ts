@@ -8,6 +8,22 @@ import { addDaysISO, startOfWeekISO, todayISO } from './dates.ts'
 const uid = () => crypto.randomUUID()
 const iso = () => new Date().toISOString()
 
+/** Names of the sample projects in both languages – used to recognise an untouched sample store. */
+export const SAMPLE_PROJECT_NAMES = new Set([
+  'Strategy workshop Northwind', 'Strategieworkshop Nordwind',
+  'Team development Musterstadt utilities', 'Teamentwicklung Stadtwerke Musterstadt',
+  'Leadership programme concept', 'Konzept Führungskräfteprogramm',
+  'Website relaunch', 'Website-Relaunch',
+  'Keynote at the November conference', 'Keynote auf der November-Konferenz',
+  'Offsite 2025 (done)', 'Offsite 2025 (erledigt)',
+  'Clear out the garage', 'Garage ausmisten',
+])
+
+/** True when every project is one of the sample projects (so the store holds nothing the user created). */
+export function looksLikeSample(projects: { name: string }[]): boolean {
+  return projects.length > 0 && projects.every((p) => SAMPLE_PROJECT_NAMES.has(p.name))
+}
+
 export function buildSampleData(locale: Locale) {
   const de = locale === 'de'
   const today = todayISO()

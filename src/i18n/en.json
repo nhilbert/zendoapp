@@ -392,6 +392,16 @@
     "offlineShort": "Server not reachable – changes queued",
     "localShort": "No server – browser only",
     "lastSync": "last sync {{time}}",
-    "pending": "{{count}} changes waiting"
+    "pending": "{{count}} changes waiting",
+    "conflict": "This browser and the server hold different data – please choose which to keep.",
+    "conflictShort": "Data differs – decision needed",
+    "conflictTitle": "Which data should Zendo keep?",
+    "conflictBody": "This browser holds data that differs from what is on the local server. This happens on the first start after switching to the server when another browser or address connected first. Nothing has been changed yet.",
+    "inBrowser": "In this browser",
+    "onServer": "On the server",
+    "conflictBackup": "A copy of this browser’s data has been kept; you can download it later from Settings → Data.",
+    "keepBrowser": "Keep this browser’s data and replace the server",
+    "keepServer": "Use the server’s data and replace this browser",
+    "downloadBackup": "Download the copy taken before the first sync"
   }
 }

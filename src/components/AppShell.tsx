@@ -9,6 +9,7 @@ import { syncCalendar } from '@/calendar/m365'
 import QuickCapture from './QuickCapture'
 import TaskDrawer from './TaskDrawer'
 import EventDialog from './EventDialog'
+import SyncConflictDialog from './SyncConflictDialog'
 import { Kbd, cx } from './ui'
 
 const NAV = [
@@ -152,6 +153,7 @@ export default function AppShell() {
       <QuickCapture />
       <TaskDrawer />
       <EventDialog />
+      <SyncConflictDialog />
     </div>
   )
 }

@@ -8,7 +8,14 @@ import { startSync } from './sync/server'
 
 // First run: seed fictional sample data so the prototype can be explored.
 const initial = useStore.getState()
-if (!initial.seeded) initial.loadSample(detectLocale())
+if (!initial.seeded) {
+  initial.loadSample(detectLocale())
+  try {
+    localStorage.setItem('zendo.fresh', '1') // a seeded sample never counts as the user's own data
+  } catch {
+    /* ignore */
+  }
+}
 setupI18n(useStore.getState().settings.locale)
 startSync()
 

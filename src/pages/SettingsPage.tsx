@@ -8,6 +8,7 @@ import { changeLocale } from '@/i18n'
 import { type AiProvider, type AiSettings, DEFAULT_MODELS, loadAiSettings, saveAiSettings } from '@/ai/settings'
 import { type M365Status, NotConfigured, ServiceUnavailable, connect, disconnect, getStatus, syncCalendar } from '@/calendar/m365'
 import { useSync } from '@/store/useSync'
+import { PRE_SYNC_BACKUP } from '@/sync/server'
 import { useLocale } from '@/components/TaskBits'
 import { Button, Field, Input, Kbd, PageHeader, SectionLabel, Segmented, Select, cx } from '@/components/ui'
 
@@ -74,14 +75,21 @@ export default function SettingsPage() {
     if (icsRef.current) icsRef.current.value = ''
   }
 
-  const download = () => {
-    const blob = new Blob([JSON.stringify(exportData(), null, 2)], { type: 'application/json' })
+  const downloadJson = (text: string, name: string) => {
+    const blob = new Blob([text], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `zendo-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = name
     a.click()
     URL.revokeObjectURL(url)
+  }
+  const download = () => downloadJson(JSON.stringify(exportData(), null, 2), `zendo-export-${new Date().toISOString().slice(0, 10)}.json`)
+  let preSyncBackup: string | null = null
+  try {
+    preSyncBackup = localStorage.getItem(PRE_SYNC_BACKUP)
+  } catch {
+    /* ignore */
   }
 
   const [jsonMsg, setJsonMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -249,6 +257,15 @@ export default function SettingsPage() {
             <Button onClick={download}>{t('settings.export')}</Button>
             <Button onClick={() => jsonRef.current?.click()}>{t('settings.import')}</Button>
             {jsonMsg && <span className={cx('fade-in self-center text-[12px]', jsonMsg.ok ? 'text-accent' : 'text-rose')}>{jsonMsg.text}</span>}
+          </div>
+          {preSyncBackup && (
+            <div className="mt-3">
+              <Button variant="ghost" size="sm" onClick={() => downloadJson(preSyncBackup!, 'zendo-before-first-sync.json')}>
+                {t('sync.downloadBackup')}
+              </Button>
+            </div>
+          )}
+          <div className="hidden">
             <Button
               variant="ghost"
               onClick={() => {

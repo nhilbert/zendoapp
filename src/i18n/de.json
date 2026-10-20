@@ -392,6 +392,16 @@
     "offlineShort": "Server nicht erreichbar – Änderungen warten",
     "localShort": "Kein Server – nur Browser",
     "lastSync": "zuletzt {{time}}",
-    "pending": "{{count}} Änderungen warten"
+    "pending": "{{count}} Änderungen warten",
+    "conflict": "Dieser Browser und der Server enthalten unterschiedliche Daten – bitte entscheiden, welche gelten.",
+    "conflictShort": "Daten unterschiedlich – Entscheidung nötig",
+    "conflictTitle": "Welche Daten soll Zendo behalten?",
+    "conflictBody": "Dieser Browser enthält Daten, die sich von denen auf dem lokalen Server unterscheiden. Das passiert beim ersten Start nach dem Umstieg auf den Server, wenn zuerst ein anderer Browser oder eine andere Adresse verbunden war. Es wurde noch nichts verändert.",
+    "inBrowser": "In diesem Browser",
+    "onServer": "Auf dem Server",
+    "conflictBackup": "Eine Kopie der Daten dieses Browsers wurde gesichert; du kannst sie später unter Einstellungen → Daten herunterladen.",
+    "keepBrowser": "Daten dieses Browsers behalten und den Server ersetzen",
+    "keepServer": "Daten des Servers übernehmen und diesen Browser ersetzen",
+    "downloadBackup": "Kopie von vor der ersten Synchronisierung herunterladen"
   }
 }

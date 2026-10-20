@@ -41,7 +41,7 @@ curl -s -X POST http://127.0.0.1:5174/api/inbox -H 'content-type: application/js
 
 To see your Outlook calendar in Zendo, register an app once ([docs/outlook-setup.md](docs/outlook-setup.md)), put the two IDs into `.env`, start `npm run dev` and press **Connect Microsoft 365** in Settings. The sign-in tokens stay in `data/` (gitignored).
 
-The first start loads fictional sample data so you can explore. Settings → Data shows the connection to the local server and lets you clear everything, export/import JSON, or reload the sample. If you used the browser-only prototype before, its data is pushed to the server automatically on the first start.
+The first start loads fictional sample data so you can explore. Settings → Data shows the connection to the local server and lets you clear everything, export/import JSON, or reload the sample. If you used the browser-only prototype before, its data is pushed to the server on the first start; if the server already holds different data, Zendo asks which side to keep and keeps a copy of the browser's data. Note that `localhost:5173` and `127.0.0.1:5173` are separate browser storages.
 
 ## Keyboard
 

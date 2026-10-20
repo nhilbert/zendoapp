@@ -1,6 +1,7 @@
 import type { CalendarEvent, InboxItem, PlanBlock, Project, Review, Settings, Task } from '@/domain/types'
 import { useStore, type DataSnapshot } from '@/store/useStore'
-import { useSync } from '@/store/useSync'
+import { useSync, type Counts } from '@/store/useSync'
+import { looksLikeSample } from '@/domain/sample'
 import { NotConfigured, ServiceUnavailable, api } from './api'
 
 /**
@@ -68,6 +69,42 @@ export function diffCollections(prev: Collections, next: Collections): Changes |
 
 const RETRY_MS = [2000, 5000, 15000, 30000]
 const DEBOUNCE_MS = 300
+/** Set once this browser has agreed with the server; from then on the server wins on start. */
+export const FLAG_SYNCED = 'zendo.synced'
+/** Set when main.tsx seeded the sample on a fresh browser; such a store never counts as the user's data. */
+export const FLAG_FRESH = 'zendo.fresh'
+/** A copy of this browser's data taken before the first sync decision – downloadable from Settings. */
+export const PRE_SYNC_BACKUP = 'zendo.pre-sync-backup'
+
+const storage = {
+  get: (k: string) => {
+    try {
+      return localStorage.getItem(k)
+    } catch {
+      return null
+    }
+  },
+  set: (k: string, v: string) => {
+    try {
+      localStorage.setItem(k, v)
+    } catch {
+      /* ignore */
+    }
+  },
+  remove: (k: string) => {
+    try {
+      localStorage.removeItem(k)
+    } catch {
+      /* ignore */
+    }
+  },
+}
+
+const counts = (s: { projects: unknown[]; tasks: unknown[]; inbox: unknown[] }): Counts => ({ projects: s.projects.length, tasks: s.tasks.length, inbox: s.inbox.length })
+
+let resolver: ((choice: 'browser' | 'server') => Promise<void>) | null = null
+/** Called by the conflict dialog. */
+export const resolveConflict = (choice: 'browser' | 'server'): Promise<void> => resolver?.(choice) ?? Promise.resolve()
 
 export function startSync(): () => void {
   const sync = useSync.getState().set
@@ -183,20 +220,65 @@ export function startSync(): () => void {
     timer = window.setTimeout(() => void flush(), DEBOUNCE_MS)
   }
 
-  /** First contact: server wins when it has data; otherwise push what we have. */
+  /** Does this browser hold data the user created (not an untouched sample, not a fresh seed)? */
+  const localHasOwnData = (): boolean => {
+    const s = useStore.getState()
+    const records = s.projects.length + s.tasks.length + s.inbox.length + s.events.length + s.blocks.length
+    if (!records) return false
+    if (storage.get(FLAG_FRESH)) return false
+    return !looksLikeSample(s.projects)
+  }
+  const sameIds = (server: ServerState): boolean => {
+    const s = useStore.getState()
+    const ids = (xs: Identified[]) => xs.map((x) => x.id).sort().join(',')
+    return ids(s.projects) === ids(server.projects) && ids(s.tasks) === ids(server.tasks) && ids(s.inbox) === ids(server.inbox)
+  }
+  const pushLocal = async () => {
+    await api('/api/state', { method: 'PUT', body: JSON.stringify(snapshot()) })
+    queue.upserts.clear()
+    queue.deletes.clear()
+    queue.settings = undefined
+    needsFullPush = false
+  }
+  const agreed = () => {
+    storage.set(FLAG_SYNCED, '1')
+    storage.remove(FLAG_FRESH)
+  }
+
+  /**
+   * First contact. Server wins when it has data – except when this browser has never
+   * synced before and holds its own data that differs: then a copy is kept and the
+   * user decides (conflict dialog). An empty server receives what this browser has.
+   */
   const handshake = async (): Promise<void> => {
     try {
       const server = await api<ServerState>('/api/state', { timeoutMs: 5000 })
       if (server.initialized) {
+        if (!storage.get(FLAG_SYNCED) && localHasOwnData() && !sameIds(server)) {
+          if (!storage.get(PRE_SYNC_BACKUP)) storage.set(PRE_SYNC_BACKUP, JSON.stringify(snapshot()))
+          resolver = async (choice) => {
+            resolver = null
+            try {
+              if (choice === 'browser') await pushLocal()
+              else applyServerState(await api<ServerState>('/api/state'))
+              agreed()
+              retries = 0
+              sync({ status: 'online', lastSync: new Date().toISOString(), pending: 0, message: undefined, conflict: undefined })
+            } catch (err) {
+              sync({ status: 'local', conflict: undefined, message: err instanceof Error ? err.message : String(err) })
+              timer = window.setTimeout(() => void handshake(), 15000)
+            }
+          }
+          sync({ status: 'conflict', conflict: { local: counts(useStore.getState()), server: counts(server) } })
+          return
+        }
         if (queued() || needsFullPush) await flush()
         const fresh = queued() ? await api<ServerState>('/api/state') : server
         applyServerState(fresh)
       } else {
-        await api('/api/state', { method: 'PUT', body: JSON.stringify(snapshot()) })
-        queue.upserts.clear()
-        queue.deletes.clear()
-        queue.settings = undefined
+        await pushLocal()
       }
+      agreed()
       retries = 0
       sync({ status: 'online', lastSync: new Date().toISOString(), pending: queued(), message: undefined })
     } catch (err) {
