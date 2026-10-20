@@ -1,7 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { COLLECTIONS, TABLE, type Collection, getMeta, setMeta, transaction } from './db.ts'
 import { STORE_VERSION, migratePersisted } from '../src/domain/migrations.ts'
-import type { CalendarEvent, Settings } from '../src/domain/types.ts'
+import { mergeImportedEvents, type MergeOptions } from '../src/domain/eventMerge.ts'
+import type { CalendarEvent, Project, Settings } from '../src/domain/types.ts'
 
 export interface Record_ {
   id: string
@@ -145,41 +146,32 @@ export class Repo {
   }
 
   /**
-   * Replace all events of one source (m365 or ics) with a fresh import. Events already known by
-   * externalId keep their id and the user's overrides (kind, project, private flag); the rest are
-   * removed. Manual events are untouched.
+   * Replace all events of one source (m365 or ics) with a fresh import, merged by mergeImportedEvents:
+   * known events keep their id and the user's overrides (kind, project, private flag), new occurrences of
+   * linked series get their project, and with a window linked history is kept. Manual events are untouched.
    */
-  replaceEvents(source: 'm365' | 'ics', incoming: Omit<CalendarEvent, 'id'>[]): { total: number; kept: number; removed: number } {
+  replaceEvents(
+    source: 'm365' | 'ics',
+    incoming: Omit<CalendarEvent, 'id'>[],
+    window: Pick<MergeOptions, 'windowFrom' | 'keepLinkedSince'> = {},
+  ): { total: number; kept: number; removed: number } {
     const now = new Date().toISOString()
-    let kept = 0
-    let removed = 0
+    let result: { total: number; kept: number; removed: number } = { total: 0, kept: 0, removed: 0 }
     transaction(this.db, () => {
-      const previous = (this.db.prepare(`SELECT data FROM events WHERE source = ?`).all(source) as { data: string }[]).map((r) => JSON.parse(r.data) as CalendarEvent)
-      const byKey = new Map(previous.filter((e) => e.externalId).map((e) => [e.externalId!, e]))
+      const parse = (rows: unknown[]) => (rows as { data: string }[]).map((r) => JSON.parse(r.data))
+      const previous: CalendarEvent[] = parse(this.db.prepare(`SELECT data FROM events WHERE source = ?`).all(source))
+      const projects: Project[] = parse(this.db.prepare(`SELECT data FROM projects`).all())
+      const { events, ...counts } = mergeImportedEvents(previous, incoming.map((ev) => ({ ...ev, source })), { ...window, projects })
+      result = counts
       const upsert = this.db.prepare(`INSERT INTO events(id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
-      const keptIds = new Set<string>()
-      for (const ev of incoming) {
-        const prev = ev.externalId ? byKey.get(ev.externalId) : undefined
-        const record: CalendarEvent = prev
-          ? { ...ev, id: prev.id, kind: prev.kind, projectId: prev.projectId, private: prev.private ?? ev.private, source }
-          : { ...ev, id: crypto.randomUUID(), source }
-        if (prev) {
-          kept += 1
-          keptIds.add(prev.id)
-        }
-        upsert.run(record.id, JSON.stringify(record), now)
-      }
+      for (const ev of events) upsert.run(ev.id, JSON.stringify(ev), now)
+      const keep = new Set(events.map((e) => e.id))
       const del = this.db.prepare(`DELETE FROM events WHERE id = ?`)
-      for (const e of previous) {
-        if (!keptIds.has(e.id)) {
-          del.run(e.id)
-          removed += 1
-        }
-      }
+      for (const e of previous) if (!keep.has(e.id)) del.run(e.id)
       setMeta(this.db, 'initialized', '1')
       setMeta(this.db, 'changed_at', now)
     })
-    return { total: incoming.length, kept, removed }
+    return result
   }
 
   getMeta(key: string): string | undefined {

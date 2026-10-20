@@ -32,6 +32,14 @@ describe('mapGraphEvents', () => {
   })
 })
 
+describe('series', () => {
+  it('carries the series id of recurring occurrences', () => {
+    const [occ, single] = mapGraphEvents([item({ id: 'O1', seriesMasterId: 'SER' }), item({ id: 'S1', seriesMasterId: null })], range)
+    expect(occ.seriesId).toBe('SER')
+    expect(single.seriesId).toBeUndefined()
+  })
+})
+
 describe('sensitivity', () => {
   it('maps private and personal sensitivity to private events', () => {
     const [a, b, c] = mapGraphEvents([item({ id: 'S1', sensitivity: 'private' }), item({ id: 'S2', sensitivity: 'personal' }), item({ id: 'S3', sensitivity: 'normal' })], range)

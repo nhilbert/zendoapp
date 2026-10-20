@@ -5,7 +5,7 @@ import path from 'node:path'
 import { PublicClientApplication, type AccountInfo, type AuthenticationResult } from '@azure/msal-node'
 import { mapGraphEvents, type GraphEvent } from './graph-map.ts'
 import type { Repo } from './repo.ts'
-import { addDaysISO, startOfWeekISO, todayISO } from '../src/domain/dates.ts'
+import { addDaysISO, addMonthsISO, startOfWeekISO, todayISO } from '../src/domain/dates.ts'
 
 export interface CalendarConfig {
   clientId?: string
@@ -111,7 +111,7 @@ export function calendarService(cfg: CalendarConfig, repo: Repo): CalendarServic
   const fetchCalendarView = async (accessToken: string, from: string, to: string): Promise<GraphEvent[]> => {
     let url: string | undefined =
       `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(`${from}T00:00:00`)}&endDateTime=${encodeURIComponent(`${to}T23:59:59`)}` +
-      `&$select=id,subject,start,end,showAs,sensitivity,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingUrl,onlineMeeting,bodyPreview,location&$orderby=start/dateTime&$top=200`
+      `&$select=id,subject,start,end,showAs,sensitivity,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingUrl,onlineMeeting,bodyPreview,location,seriesMasterId&$orderby=start/dateTime&$top=200`
     const items: GraphEvent[] = []
     while (url) {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Prefer: `outlook.timezone="${cfg.timezone}"` } })
@@ -127,7 +127,8 @@ export function calendarService(cfg: CalendarConfig, repo: Repo): CalendarServic
     const token = await getToken(false)
     const { from, to } = syncRange()
     const items = await fetchCalendarView(token.accessToken, from, to)
-    const result = repo.replaceEvents('m365', mapGraphEvents(items, { from, to }))
+    // Linked meetings that leave the window stay as project history for 12 months (CAL-12).
+    const result = repo.replaceEvents('m365', mapGraphEvents(items, { from, to }), { windowFrom: from, keepLinkedSince: addMonthsISO(todayISO(), -12) })
     const lastSync = new Date().toISOString()
     repo.setMeta('calendar_last_sync', lastSync)
     console.log(`Calendar: ${result.total} events synced (${from} … ${to}), ${result.kept} known, ${result.removed} removed`)

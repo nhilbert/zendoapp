@@ -73,4 +73,14 @@ describe('replaceEvents', () => {
     expect(b2.private).toBe(true)
     expect(b2.start).toBe('14:00')
   })
+  it('applies series links from projects and keeps linked history before the window', () => {
+    const repo = fresh()
+    repo.applyChanges({ upserts: { projects: [{ id: 'p', name: 'P', status: 'active', meetingSeries: ['S'] }] } })
+    const base = { start: '10:00', end: '11:00', kind: 'online' as const, source: 'm365' as const }
+    repo.replaceEvents('m365', [{ ...base, title: 'Old', date: '2026-09-01', externalId: 'old#2026-09-01', seriesId: 'S' }])
+    expect(repo.loadState().events[0]).toMatchObject({ title: 'Old', projectId: 'p' })
+    const r = repo.replaceEvents('m365', [{ ...base, title: 'New', date: '2026-10-21', externalId: 'new#2026-10-21' }], { windowFrom: '2026-10-12', keepLinkedSince: '2025-10-20' })
+    expect(r).toEqual({ total: 1, kept: 0, removed: 0 })
+    expect(repo.loadState().events.map((e) => e.title).sort()).toEqual(['New', 'Old'])
+  })
 })

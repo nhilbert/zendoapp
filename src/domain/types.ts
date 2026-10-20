@@ -64,6 +64,8 @@ export interface Project {
   dueDate?: ISODate
   /** Private (non-work) project; hidden when "hide private" is on. All its tasks count as private. */
   private?: boolean
+  /** Outlook series linked as a whole (CAL-10): new occurrences of these series get this project on sync. */
+  meetingSeries?: string[]
   createdAt: ISODateTime
   updatedAt: ISODateTime
 }
@@ -152,6 +154,8 @@ export interface CalendarEvent {
   source: 'manual' | 'ics' | 'm365'
   /** external id (ICS UID) for de-duplication on re-import */
   externalId?: string
+  /** Outlook series (seriesMasterId) this occurrence belongs to; see Project.meetingSeries */
+  seriesId?: string
 }
 
 export type BlockSize = 0.25 | 0.5 | 0.75 | 1

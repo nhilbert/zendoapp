@@ -18,6 +18,7 @@ import { DEFAULT_SETTINGS, PROJECT_COLORS } from '@/domain/types'
 import { buildSampleData } from '@/domain/sample'
 import { addDaysISO, daysBetween, nextOccurrenceFrom, todayISO } from '@/domain/dates'
 import { STORE_VERSION, migratePersisted } from '@/domain/migrations'
+import { mergeImportedEvents } from '@/domain/eventMerge'
 
 export { STORE_VERSION, migratePersisted }
 import { urgencyComparator } from '@/domain/selectors'
@@ -311,22 +312,13 @@ export const useStore = create<State>()(
       updateEvent: (id, patch) => set((s) => ({ events: s.events.map((e) => (e.id === id ? { ...e, ...patch } : e)) })),
       deleteEvent: (id) => set((s) => ({ events: s.events.filter((e) => e.id !== id) })),
       importEvents: (incoming, source) => {
-        let kept = 0
-        let removed = 0
+        let result = { total: 0, kept: 0, removed: 0 }
         set((s) => {
-          const previous = s.events.filter((e) => e.source === source)
-          const byKey = new Map(previous.map((e) => [e.externalId, e]))
-          const merged = incoming.map((ev) => {
-            const prev = ev.externalId ? byKey.get(ev.externalId) : undefined
-            if (!prev) return ev
-            kept += 1
-            byKey.delete(ev.externalId)
-            return { ...ev, id: prev.id, kind: prev.kind, projectId: prev.projectId, private: prev.private ?? ev.private }
-          })
-          removed = byKey.size
-          return { events: [...s.events.filter((e) => e.source !== source), ...merged] }
+          const { events, ...counts } = mergeImportedEvents(s.events.filter((e) => e.source === source), incoming, { projects: s.projects })
+          result = counts
+          return { events: [...s.events.filter((e) => e.source !== source), ...events] }
         })
-        return { total: incoming.length, kept, removed }
+        return result
       },
 
       addBlock: (date, projectId, size = 0.5, note) => {
