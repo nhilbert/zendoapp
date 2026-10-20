@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CalendarEvent, PlanBlock, Project, Task } from '@/domain/types'
-import { isWorkable } from '@/domain/selectors'
+import { isWorkable, visibleBlocks } from '@/domain/selectors'
 import { useStore } from './useStore'
 
 /**
@@ -47,10 +47,7 @@ export function useVisibleBlocks(): PlanBlock[] {
   const blocks = useStore((s) => s.blocks)
   const projects = useStore((s) => s.projects)
   const hide = useHidePrivate()
-  return useMemo(() => {
-    const hidden = new Set(projects.filter((p) => p.status === 'archived' || (hide && p.private)).map((p) => p.id))
-    return blocks.filter((b) => !b.projectId || !hidden.has(b.projectId))
-  }, [blocks, projects, hide])
+  return useMemo(() => visibleBlocks(blocks, projects, hide), [blocks, projects, hide])
 }
 
 export type VisibleEvent = CalendarEvent & { masked?: boolean }

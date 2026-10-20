@@ -8,8 +8,8 @@
  */
 import type { BlockSize, CalendarEvent, HHMM, ISODate, Locale, PlanBlock, Project, Settings, Task } from '../domain/types.ts'
 import { BLOCK_SIZES } from '../domain/types.ts'
-import { blocksOn, dayCapacity, eventsOn, isBlocking, isOpen, safeTimes } from '../domain/selectors.ts'
-import { compareISO, hhmmToMinutes, isoWeekday } from '../domain/dates.ts'
+import { type DayCapacity, blocksOn, dayCapacity, isOpen, isOverplanned, safeTimes } from '../domain/selectors.ts'
+import { compareISO, hhmmToMinutes, isHHMM, isISODate, isoWeekday } from '../domain/dates.ts'
 import { extractJsonObject } from './clarify.ts'
 
 export interface ProposedBlock {
@@ -23,9 +23,9 @@ export interface ProposedBlock {
   reason: string | null
 }
 
-export interface WeekProposal {
+export interface WeekProposal<B extends ProposedBlock = ProposedBlock> {
   summary: string
-  blocks: ProposedBlock[]
+  blocks: B[]
   /** proposed blocks left out because they did not fit (capacity, unknown project, duplicate) */
   dropped: number
 }
@@ -42,7 +42,7 @@ export interface WeekContext {
   projects: Project[]
   tasks: Task[]
   events: CalendarEvent[]
-  /** all existing blocks (they take time whoever they belong to) */
+  /** the existing blocks that take time, private ones included (see visibleBlocks: archived projects' blocks are left out) */
   blocks: PlanBlock[]
   /** private projects that must not be named to the provider */
   hiddenProjectIds: Set<string>
@@ -90,6 +90,23 @@ export const WEEK_SCHEMA: Record<string, unknown> = {
   },
 }
 
+/** What fitting needs; the browser re-checks a proposal against its current data with the same rules. */
+export type FitContext = Pick<WeekContext, 'today' | 'now' | 'dates' | 'settings' | 'projects' | 'tasks' | 'events' | 'blocks'>
+
+/**
+ * A day's capacity as Week and Today compute it. For today with a known time only the rest of the day
+ * counts: working time and the meeting window start at now; blocks already planned count in full.
+ */
+export function proposalCapacity(date: ISODate, ctx: FitContext, blocks: PlanBlock[] = ctx.blocks): DayCapacity {
+  let settings = safeTimes(ctx.settings)
+  const now = ctx.now
+  if (date === ctx.today && isHHMM(now)) {
+    const notBeforeNow = (t: HHMM) => (hhmmToMinutes(t) < hhmmToMinutes(now) ? now : t)
+    settings = { ...settings, workdayStart: notBeforeNow(settings.workdayStart), budgetStart: notBeforeNow(settings.budgetStart) }
+  }
+  return dayCapacity(date, settings, ctx.events, blocks, ctx.tasks)
+}
+
 const WEEKDAYS = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const hours = (minutes: number) => `${Math.round(minutes / 6) / 10} h`
 
@@ -98,20 +115,18 @@ export function buildWeekPrompt(ctx: WeekContext): string {
   const byId = new Map(ctx.projects.map((p) => [p.id, p]))
   const label = (projectId: string | null | undefined) =>
     !projectId ? 'chores/admin' : ctx.hiddenProjectIds.has(projectId) ? 'a private project' : byId.has(projectId) ? JSON.stringify(byId.get(projectId)!.name) : 'another project'
-  const windowStart = hhmmToMinutes(settings.budgetStart)
-  const windowEnd = hhmmToMinutes(settings.budgetEnd)
 
   const days = ctx.dates.map((date) => {
-    const head = `- ${date} ${WEEKDAYS[isoWeekday(date)]}${date === ctx.today ? ' (today)' : ''}`
-    const cap = dayCapacity(date, settings, ctx.events, ctx.blocks, ctx.tasks)
+    const isToday = date === ctx.today
+    const head = `- ${date} ${WEEKDAYS[isoWeekday(date)]}${isToday ? (isHHMM(ctx.now) ? ` (today, from ${ctx.now})` : ' (today)') : ''}`
+    const cap = proposalCapacity(date, { ...ctx, settings })
     if (!cap.isWorkDay) return `${head}: off`
     if (cap.fullDay) return `${head}: fully booked`
+    // Per project as dayCapacity counts it (workshop minimum included), merged by the label the provider sees.
     const meetings = new Map<string, number>()
-    for (const e of eventsOn(ctx.events, date).filter((e) => isBlocking(e) && !e.allDay)) {
-      const minutes = Math.max(0, Math.min(hhmmToMinutes(e.end), windowEnd) - Math.max(hhmmToMinutes(e.start), windowStart))
-      if (minutes === 0) continue
-      const who = e.projectId ? label(e.projectId) : 'no project'
-      meetings.set(who, (meetings.get(who) ?? 0) + minutes)
+    for (const m of cap.meetingsByProject) {
+      const who = m.projectId ? label(m.projectId) : 'no project'
+      meetings.set(who, (meetings.get(who) ?? 0) + m.minutes)
     }
     const meetingText = meetings.size ? `meetings ${hours(cap.meetingMinutes)} (${[...meetings].map(([who, m]) => `${who} ${hours(m)}`).join(', ')})` : 'no meetings'
     const planned = blocksOn(ctx.blocks, date)
@@ -165,32 +180,31 @@ export function parseWeekProposal(raw: string): WeekProposal {
     if (!x || typeof x !== 'object') continue
     const b = x as Record<string, unknown>
     const size = Number(b.size)
-    if (typeof b.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(b.date) || !BLOCK_SIZES.includes(size as BlockSize)) continue
+    // projectId is a project (string) or chores (null); anything else is dropped rather than turned into chores.
+    if (!isISODate(b.date) || !BLOCK_SIZES.includes(size as BlockSize) || (b.projectId !== null && typeof b.projectId !== 'string')) continue
     blocks.push({ date: b.date, projectId: str(b.projectId), size: size as BlockSize, note: str(b.note)?.slice(0, 80) ?? null, reason: str(b.reason)?.slice(0, 240) ?? null })
   }
   return { summary: str(json.summary) ?? '', blocks, dropped: rawBlocks.length - blocks.length }
 }
 
-/** Fit tolerance: a proposal may exceed a day's work time by this much (rounding of block sizes). */
-const TOLERANCE_MINUTES = 15
-
 /**
  * Keeps only blocks that are allowed and fit: a planned date that is a work day and not fully booked,
- * a known project (or chores), no second block for the same project and day, and the day's capacity
- * (computed exactly as in Week and Today, including blocks accepted before) not exceeded.
+ * a known project (or chores), no second block for the same project and day, and the day not
+ * overplanned as Week shows it (proposalCapacity: only the rest of today; blocks accepted before count).
+ * The server runs it on the model answer, the browser again on its current data before showing and applying.
  */
-export function fitProposal(proposal: WeekProposal, ctx: WeekContext): WeekProposal {
+export function fitProposal<B extends ProposedBlock>(proposal: WeekProposal<B>, ctx: FitContext): WeekProposal<B> {
   const dates = new Set(ctx.dates)
   const projects = new Set(ctx.projects.map((p) => p.id))
   const accepted: PlanBlock[] = []
-  const out: ProposedBlock[] = []
+  const out: B[] = []
   for (const b of proposal.blocks) {
     if (!dates.has(b.date) || (b.projectId !== null && !projects.has(b.projectId))) continue
     const sameDay = [...ctx.blocks, ...accepted].filter((x) => x.date === b.date)
     if (sameDay.some((x) => x.projectId === b.projectId)) continue
     const candidate: PlanBlock = { id: `proposal-${accepted.length}`, date: b.date, projectId: b.projectId, size: b.size }
-    const cap = dayCapacity(b.date, ctx.settings, ctx.events, [...ctx.blocks, ...accepted, candidate], ctx.tasks)
-    if (!cap.isWorkDay || cap.fullDay || cap.uncoveredMeetingMinutes + cap.blockMinutes > cap.workMinutes + TOLERANCE_MINUTES) continue
+    const cap = proposalCapacity(b.date, ctx, [...ctx.blocks, ...accepted, candidate])
+    if (!cap.isWorkDay || cap.fullDay || isOverplanned(cap)) continue
     accepted.push(candidate)
     out.push(b)
   }

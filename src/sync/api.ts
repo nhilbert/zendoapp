@@ -9,6 +9,13 @@ export class NotConfigured extends Error {
     super('not_configured')
   }
 }
+/** The request ran into its timeout: for sync the server is just unavailable, AI calls can say what happened. */
+export class RequestTimeout extends ServiceUnavailable {
+  constructor() {
+    super()
+    this.message = 'timeout'
+  }
+}
 /** Hosted behind a login: the proxy answers API calls with 401 login_required once the session has expired. */
 export class SignInRequired extends Error {
   constructor() {
@@ -23,7 +30,7 @@ export async function api<T>(path: string, init?: RequestInit & { timeoutMs?: nu
   try {
     res = await fetch(path, { ...init, signal: controller.signal, headers: { 'content-type': 'application/json', ...(init?.headers ?? {}), 'x-zendo': '1' } })
   } catch {
-    throw new ServiceUnavailable()
+    throw controller.signal.aborted ? new RequestTimeout() : new ServiceUnavailable()
   } finally {
     window.clearTimeout(timer)
   }

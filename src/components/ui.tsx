@@ -5,6 +5,14 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
 
+/** Keyboard shortcuts stay quiet while the user types in a field. */
+export function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+}
+
 type ButtonProps = ComponentProps<'button'> & {
   variant?: 'primary' | 'default' | 'ghost' | 'danger'
   size?: 'sm' | 'md'

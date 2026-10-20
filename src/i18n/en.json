@@ -110,7 +110,11 @@
       "noKey": "No AI key on the Zendo server (ANTHROPIC_API_KEY).",
       "errAuth": "the provider rejected the API key",
       "errRate": "rate limit reached – try again in a minute",
-      "errRefused": "the model declined this note",
+      "errRefused": "the model declined the request",
+      "errTruncated": "the answer was cut off – please try again",
+      "errBadResponse": "the answer could not be read – please try again",
+      "errUnreachable": "the AI provider is not reachable",
+      "errTimeout": "no answer in time – please try again",
       "errServer": "the Zendo server is not reachable"
     },
     "back": "Back",

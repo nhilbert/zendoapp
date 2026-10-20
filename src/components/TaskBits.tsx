@@ -4,7 +4,8 @@ import { Clock, Hourglass, Lock, Repeat } from 'lucide-react'
 import type { ISODate, Project, ProjectColor, Task } from '@/domain/types'
 import { compareISO, fmtDate, fmtWeekday, todayISO } from '@/domain/dates'
 import { useStore } from '@/store/useStore'
-import { Chip, cx } from './ui'
+import { useUi } from '@/store/useUi'
+import { Button, Checkbox, Chip, cx } from './ui'
 
 export function useLocale(): string {
   const { i18n } = useTranslation()
@@ -112,5 +113,26 @@ export function TaskMeta({ task, hideProject, className }: { task: Task; hidePro
       )}
       {task.status === 'waiting' && task.waitingFor && <Chip>{task.waitingFor}</Chip>}
     </div>
+  )
+}
+
+/** A task in a project's list: tick off, open, and – when offered – make it the next action. */
+export function TaskRow({ task, onMakeNext }: { task: Task; onMakeNext?: () => void }) {
+  const { t } = useTranslation()
+  const completeTask = useStore((s) => s.completeTask)
+  const openTask = useUi((s) => s.openTask)
+  return (
+    <li className="group flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface-2">
+      <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} className="mt-[3px]" />
+      <button type="button" onClick={() => openTask(task.id)} className="min-w-0 flex-1 text-left">
+        <div className={cx('text-[14px]', task.status === 'done' && 'strike')}>{task.title}</div>
+        <TaskMeta task={task} hideProject className="mt-1" />
+      </button>
+      {onMakeNext && task.status !== 'done' && (
+        <Button variant="ghost" size="sm" className="reveal opacity-0 group-hover:opacity-100" onClick={onMakeNext}>
+          {t('project.makeNext')}
+        </Button>
+      )}
+    </li>
   )
 }

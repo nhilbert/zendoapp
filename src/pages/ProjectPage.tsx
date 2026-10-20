@@ -7,9 +7,8 @@ import { PROJECT_COLORS } from '@/domain/types'
 import { addDaysISO, fmtDate, fmtWeekday, startOfWeekISO, todayISO } from '@/domain/dates'
 import { nextActionOf, sortTasks } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
-import { useUi } from '@/store/useUi'
 import { Button, Checkbox, IconButton, Input, Select, SectionLabel, Textarea, cx } from '@/components/ui'
-import { ProjectDot, TaskMeta, projectVars, useLocale } from '@/components/TaskBits'
+import { ProjectDot, TaskRow, projectVars, useLocale } from '@/components/TaskBits'
 
 export default function ProjectPage() {
   const { t } = useTranslation()
@@ -24,8 +23,6 @@ export default function ProjectPage() {
   const deleteProject = useStore((s) => s.deleteProject)
   const addTask = useStore((s) => s.addTask)
   const setTaskStatus = useStore((s) => s.setTaskStatus)
-  const completeTask = useStore((s) => s.completeTask)
-  const openTask = useUi((s) => s.openTask)
   const [newTitle, setNewTitle] = useState('')
   const [newGoal, setNewGoal] = useState('')
 
@@ -59,18 +56,7 @@ export default function ProjectPage() {
   const myBlocks = blocks.filter((b) => b.projectId === project.id && b.date >= horizonStart && b.date < horizonEnd).sort((a, b) => a.date.localeCompare(b.date))
 
   const row = (task: Task, options?: { showMakeNext?: boolean }) => (
-    <li key={task.id} className="group flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface-2">
-      <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} className="mt-[3px]" />
-      <button type="button" onClick={() => openTask(task.id)} className="min-w-0 flex-1 text-left">
-        <div className={cx('text-[14px]', task.status === 'done' && 'strike')}>{task.title}</div>
-        <TaskMeta task={task} hideProject className="mt-1" />
-      </button>
-      {options?.showMakeNext && task.status !== 'done' && !archived && (
-        <Button variant="ghost" size="sm" className="reveal opacity-0 group-hover:opacity-100" onClick={() => setTaskStatus(task.id, 'next')}>
-          {t('project.makeNext')}
-        </Button>
-      )}
-    </li>
+    <TaskRow key={task.id} task={task} onMakeNext={options?.showMakeNext && !archived ? () => setTaskStatus(task.id, 'next') : undefined} />
   )
 
   return (

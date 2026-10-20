@@ -103,7 +103,8 @@ export function daysBetween(a: ISODate, b: ISODate): number {
 }
 
 export const isHHMM = (s: unknown): s is HHMM => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s)
-export const isISODate = (s: unknown): s is ISODate => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(fromISODate(s).getTime())
+/** A real calendar date in 'YYYY-MM-DD' form ('2026-02-31' is rejected: it would roll over into March). */
+export const isISODate = (s: unknown): s is ISODate => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && toISODate(fromISODate(s)) === s
 
 export function hhmmToMinutes(t: HHMM): number {
   const [h, m] = t.split(':').map(Number)

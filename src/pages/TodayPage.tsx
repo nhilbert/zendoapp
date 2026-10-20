@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Target, Video, X } from 'lucide-react'
 import { BLOCK_SIZE_LABEL, type ISODate, type PlanBlock, type Task } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
-import { addDaysISO, addMinutes, durationMinutes, fmtDate, fmtHours, fmtTime, hhmmToMinutes, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
+import { addDaysISO, addMinutes, compareISO, durationMinutes, fmtDate, fmtHours, fmtTime, hhmmToMinutes, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
 import { type DayCapacity, blocksOn, candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, leftoverTasks, projectsWithoutNextAction, safeTimes, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
-import { Button, Checkbox, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone } from '@/components/ui'
+import { Button, Checkbox, Chip, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone } from '@/components/ui'
 import { ProjectChip, ProjectDot, TaskMeta, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 
 const SLOT = 30 // minutes
@@ -49,15 +49,7 @@ export default function TodayPage() {
   const cap = dayCapacity(date, settings, events, blocks, tasks)
   // Rollover: on today, unfinished tasks from earlier days are offered once (and not repeated among the candidates).
   const leftovers = date === today ? leftoverTasks(tasks, today) : []
-  const leftoverIds = new Set(leftovers.map((x) => x.id))
-  const rawCands = candidatesForDay(date, tasks, blocks, projects)
-  const notLeftover = (x: Task) => !leftoverIds.has(x.id)
-  const cands = {
-    overdue: rawCands.overdue.filter(notLeftover),
-    due: rawCands.due.filter(notLeftover),
-    fromBlocks: rawCands.fromBlocks.filter((b) => !b.task || notLeftover(b.task)),
-    chores: rawCands.chores.filter(notLeftover),
-  }
+  const cands = candidatesForDay(date, tasks, blocks, projects, new Set(leftovers.map((x) => x.id)))
   const missingNext = projectsWithoutNextAction(projects, tasks)
   const dayReview = reviews.find((r) => r.kind === 'daily' && r.date === date)
   const [notes, setNotes] = useState(dayReview?.notes ?? '')
@@ -317,6 +309,9 @@ function Leftovers({ tasks, today }: { tasks: Task[]; today: ISODate }) {
       <ul className="flex flex-col">
         {tasks.map((task) => {
           const project = task.projectId ? projectMap.get(task.projectId) : null
+          // Leftovers are not repeated under Overdue / Due today, so they carry that deadline marker here.
+          const overdue = !!task.dueDate && compareISO(task.dueDate, today) < 0
+          const dueToday = task.dueDate === today
           return (
             <li key={task.id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-2">
               <Checkbox checked={false} onChange={(v) => completeTask(task.id, v)} className="shrink-0" />
@@ -324,6 +319,11 @@ function Leftovers({ tasks, today }: { tasks: Task[]; today: ISODate }) {
                 <ProjectDot color={project?.color ?? null} size={6} />
                 <span className="truncate">{task.title}</span>
                 <span className="tnum shrink-0 text-[11px] text-ink-3">{fmtDate(task.plannedDate!, locale, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                {(overdue || dueToday) && (
+                  <Chip tone={overdue ? 'rose' : 'amber'} className="shrink-0">
+                    {overdue ? t('task.overdue') : t('task.dueToday')}
+                  </Chip>
+                )}
               </button>
               <IconButton label={t('today.toToday')} onClick={() => rescheduleTasks([task.id], today)}>
                 <Plus size={14} />
@@ -354,6 +354,7 @@ function DayBlocks({ blocks, cap, dayCapacityHours }: { blocks: PlanBlock[]; cap
   const { t } = useTranslation()
   const locale = useLocale()
   const projectMap = useProjectMap()
+  const location = useLocation()
   if (blocks.length === 0 && !cap.isWorkDay) return null
   return (
     <div>
@@ -387,7 +388,7 @@ function DayBlocks({ blocks, cap, dayCapacityHours }: { blocks: PlanBlock[]; cap
                     {BLOCK_SIZE_LABEL[b.size]} · {fmtHours(minutes, locale)}
                   </span>
                   {project && (
-                    <Link to={`/focus/${project.id}`} state={{ from: '/today' }} title={t('focus.startTitle')} aria-label={t('focus.start')} className="pc-text -mr-1 shrink-0 rounded p-0.5 opacity-70 hover:opacity-100">
+                    <Link to={`/focus/${project.id}`} state={{ from: location.pathname + location.search }} title={t('focus.startTitle')} aria-label={t('focus.start')} className="pc-text -mr-1 shrink-0 rounded p-0.5 opacity-70 hover:opacity-100">
                       <Target size={14} />
                     </Link>
                   )}

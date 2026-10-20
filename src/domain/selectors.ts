@@ -84,6 +84,15 @@ export function blocksOn(blocks: PlanBlock[], date: ISODate): PlanBlock[] {
   return blocks.filter((b) => b.date === date)
 }
 
+/**
+ * Blocks that count in plans and capacity: blocks of archived projects are history and left out,
+ * and with hidePrivate so are those of private projects. Week, Today and the AI proposal share this.
+ */
+export function visibleBlocks(blocks: PlanBlock[], projects: Project[], hidePrivate: boolean): PlanBlock[] {
+  const hidden = new Set(projects.filter((p) => p.status === 'archived' || (hidePrivate && p.private)).map((p) => p.id))
+  return blocks.filter((b) => !b.projectId || !hidden.has(b.projectId))
+}
+
 export function blockHours(size: BlockSize, settings: Settings): number {
   return size * settings.dayCapacityHours
 }
@@ -92,6 +101,8 @@ export interface DayCapacity {
   workMinutes: number
   /** all blocking meetings of the day, clipped to the budget window */
   meetingMinutes: number
+  /** meeting cost per project (null = no project), workshop minimum included; sums to meetingMinutes unless fullDay */
+  meetingsByProject: { projectId: string | null; minutes: number }[]
   /** meetings not covered by a plan block (no project, or the project has no block that day) */
   uncoveredMeetingMinutes: number
   /** effective block time: per project the larger of the block and that project's meetings */
@@ -165,17 +176,22 @@ export function dayCapacity(
     .filter(isOpen)
     .reduce((sum, t) => sum + (t.estimateMinutes ?? 30), 0)
   const freeMinutes = Math.max(0, workMinutes - uncoveredMeetingMinutes - blockMinutes)
-  return { workMinutes, meetingMinutes, uncoveredMeetingMinutes, blockMinutes, absorbedMinutes, plannedTaskMinutes, freeMinutes, isWorkDay, fullDay, blocks: blockInfos }
+  const meetingsByProject = [...byProject].map(([projectId, minutes]) => ({ projectId, minutes }))
+  return { workMinutes, meetingMinutes, meetingsByProject, uncoveredMeetingMinutes, blockMinutes, absorbedMinutes, plannedTaskMinutes, freeMinutes, isWorkDay, fullDay, blocks: blockInfos }
 }
 
-/** Candidates for today's plan, in a sensible order. */
+/** More meetings and blocks than working time: the Week row turns amber, and AI proposals never cause it. */
+export const isOverplanned = (cap: DayCapacity) => cap.isWorkDay && cap.uncoveredMeetingMinutes + cap.blockMinutes > cap.workMinutes
+
+/** Candidates for today's plan, in a sensible order. Tasks in `exclude` (e.g. the leftovers shown above) are left out of every group. */
 export function candidatesForDay(
   date: ISODate,
   tasks: Task[],
   blocks: PlanBlock[],
   projects: Project[],
+  exclude: ReadonlySet<string> = new Set(),
 ): { overdue: Task[]; due: Task[]; fromBlocks: { project: Project | null; task: Task | undefined }[]; chores: Task[] } {
-  const open = tasks.filter((t) => isOpen(t) && t.plannedDate !== date)
+  const open = tasks.filter((t) => isOpen(t) && t.plannedDate !== date && !exclude.has(t.id))
   const overdue = open.filter((t) => t.dueDate && compareISO(t.dueDate, date) < 0)
   const due = open.filter((t) => t.dueDate === date)
   const todaysBlocks = blocksOn(blocks, date)
@@ -183,8 +199,8 @@ export function candidatesForDay(
     .map((b) => {
       const project = b.projectId ? projects.find((p) => p.id === b.projectId) ?? null : null
       const next = project ? tasks.find((t) => t.projectId === project.id && t.status === 'next' && isOpen(t)) : undefined
-      // Already in today's plan → nothing to suggest for this block.
-      if (next && next.plannedDate === date) return null
+      // Already in today's plan, or offered elsewhere → nothing to suggest for this block.
+      if (next && (next.plannedDate === date || exclude.has(next.id))) return null
       return { project, task: next }
     })
     .filter((x): x is { project: Project | null; task: Task | undefined } => x !== null)

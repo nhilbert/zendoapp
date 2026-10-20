@@ -10,7 +10,7 @@ import TaskDrawer from './TaskDrawer'
 import EventDialog from './EventDialog'
 import SyncConflictDialog from './SyncConflictDialog'
 import MobileNav from './MobileNav'
-import { Kbd, cx } from './ui'
+import { Kbd, cx, isTyping } from './ui'
 
 const NAV = [
   { to: '/today', key: 'nav.today', icon: Sun, shortcut: 't' },
@@ -22,11 +22,25 @@ const NAV = [
   { to: '/review', key: 'nav.review', icon: BookOpen, shortcut: 'r' },
 ] as const
 
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+/** Server trouble (offline, browser only, sign-in expired) stays visible, also in focus mode without the sidebar. */
+function SyncNotice({ className }: { className?: string }) {
+  const { t } = useTranslation()
+  const syncStatus = useSync((s) => s.status)
+  if (syncStatus === 'offline' || syncStatus === 'local') {
+    return (
+      <NavLink to="/settings" className={cx('text-[12px] text-amber hover:underline', className)}>
+        {t(`sync.${syncStatus}Short`)}
+      </NavLink>
+    )
+  }
+  if (syncStatus === 'signin') {
+    return (
+      <button type="button" onClick={() => window.location.reload()} title={t('sync.signin')} className={cx('text-left text-[12px] text-amber hover:underline', className)}>
+        {t('sync.signinShort')}
+      </button>
+    )
+  }
+  return null
 }
 
 export default function AppShell() {
@@ -37,7 +51,6 @@ export default function AppShell() {
   const openCapture = useUi((s) => s.openCapture)
   const closeAll = useUi((s) => s.closeAll)
   const hidePrivate = useStore((s) => !!s.settings.hidePrivate)
-  const syncStatus = useSync((s) => s.status)
   const updateSettings = useStore((s) => s.updateSettings)
   const togglePrivate = () => updateSettings({ hidePrivate: !useStore.getState().settings.hidePrivate })
 
@@ -109,16 +122,7 @@ export default function AppShell() {
             ))}
           </nav>
           <div className="mt-auto flex flex-col gap-3 px-2.5">
-            {(syncStatus === 'offline' || syncStatus === 'local') && (
-              <NavLink to="/settings" className="text-[12px] text-amber hover:underline">
-                {t(`sync.${syncStatus}Short`)}
-              </NavLink>
-            )}
-            {syncStatus === 'signin' && (
-              <button type="button" onClick={() => window.location.reload()} title={t('sync.signin')} className="text-left text-[12px] text-amber hover:underline">
-                {t('sync.signinShort')}
-              </button>
-            )}
+            <SyncNotice />
             <button
               type="button"
               onClick={togglePrivate}
@@ -154,6 +158,7 @@ export default function AppShell() {
         <Outlet />
       </main>
       {!focus && <MobileNav />}
+      {focus && <SyncNotice className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 z-30 rounded-full border border-line bg-surface px-3 py-1.5" />}
       <QuickCapture />
       <TaskDrawer />
       <EventDialog />

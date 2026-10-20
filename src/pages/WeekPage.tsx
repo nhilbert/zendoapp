@@ -7,14 +7,14 @@ import type { ISODate, PlanBlock, Project } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
 import { BLOCK_SIZES, BLOCK_SIZE_LABEL } from '@/domain/types'
 import { addDaysISO, fmtDate, fmtHours, fmtTime, fmtWeekday, isoWeekNumber, nowHHMM, rangeISO, startOfWeekISO, todayISO } from '@/domain/dates'
-import { blocksOn, dayCapacity, eventsOn, isBlocking, tasksDueOn } from '@/domain/selectors'
+import { blocksOn, dayCapacity, eventsOn, isBlocking, isOverplanned, tasksDueOn, visibleBlocks } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
 import { Button, IconButton, PageHeader, cx, useIsPhone } from '@/components/ui'
 import { ProjectDot, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
-import type { ProposedBlock } from '@/ai/week'
+import { type ProposedBlock, fitProposal } from '@/ai/week'
 import { aiErrorText } from '@/ai/errors'
 import { NotConfigured } from '@/sync/api'
 
@@ -42,14 +42,21 @@ export default function WeekPage() {
   const isPhone = useIsPhone()
   const appLocale = useStore((s) => s.settings.locale)
   const hidePrivate = useStore((s) => !!s.settings.hidePrivate)
+  const settings = useStore((s) => s.settings)
+  const allBlocks = useStore((s) => s.blocks)
+  const allProjects = useStore((s) => s.projects)
+  const tasks = useVisibleTasks()
+  const events = useVisibleEvents()
 
   // AI proposal for the visible two weeks: shown as dashed blocks until applied or discarded.
   const [proposal, setProposal] = useState<ProposalState | null>(null)
   const request = useRef(0)
   useEffect(() => {
-    request.current += 1 // a proposal belongs to the visible range; a late answer for another range is ignored
+    // A proposal belongs to the visible range and to what was shown when it was asked for: one made with
+    // private projects (blocks and summary may name them) must not survive "hide private". Late answers are ignored.
+    request.current += 1
     setProposal(null)
-  }, [offset])
+  }, [offset, hidePrivate])
   const propose = async () => {
     const mine = ++request.current
     setProposal({ status: 'loading' })
@@ -61,11 +68,26 @@ export default function WeekPage() {
       if (mine === request.current) setProposal({ status: 'error', message: err instanceof NotConfigured ? t('clarify.ai.noKey') : t('week.proposalError', { message: aiErrorText(err, t) }) })
     }
   }
-  const proposedOn = (date: ISODate) => (proposal?.status === 'ready' ? proposal.blocks.filter((b) => b.date === date) : [])
+  // Checked again against the current plan with the server's rules, so what is shown is what Apply adds:
+  // no second block after a drag, nothing for a project archived or deleted since, nothing over capacity.
+  const fitted =
+    proposal?.status === 'ready'
+      ? fitProposal(proposal, {
+          today,
+          now: nowHHMM(),
+          dates: rangeISO(start, 14).filter((d) => d >= today),
+          settings,
+          projects: activeProjects,
+          tasks,
+          events,
+          blocks: visibleBlocks(allBlocks, allProjects, false),
+        })
+      : null
+  const proposedOn = (date: ISODate) => (fitted ? fitted.blocks.filter((b) => b.date === date) : [])
   const dropProposed = (key: string) => setProposal((p) => (p?.status === 'ready' ? { ...p, blocks: p.blocks.filter((b) => b.key !== key) } : p))
   const applyProposal = () => {
-    if (proposal?.status !== 'ready') return
-    for (const b of proposal.blocks) addBlock(b.date, b.projectId, b.size, b.note ?? undefined)
+    if (!fitted) return
+    for (const b of fitted.blocks) addBlock(b.date, b.projectId, b.size, b.note ?? undefined)
     setProposal(null)
   }
 
@@ -119,18 +141,18 @@ export default function WeekPage() {
           <div className="min-w-0 flex-1 text-[13px]">
             {proposal.status === 'loading' && <p className="text-ink-2">{t('week.proposing')}</p>}
             {proposal.status === 'error' && <p className="text-rose">{proposal.message}</p>}
-            {proposal.status === 'ready' && (
+            {fitted && (
               <>
-                <div className="font-medium text-ink">{proposal.blocks.length ? t('week.proposalTitle', { count: proposal.blocks.length }) : t('week.proposalNone')}</div>
-                {proposal.summary && <p className="mt-1 leading-relaxed text-ink-2">{proposal.summary}</p>}
-                {proposal.dropped > 0 && <p className="mt-1 text-[12px] text-ink-3">{t('week.proposalDropped', { count: proposal.dropped })}</p>}
-                {proposal.blocks.length > 0 && <p className="mt-1 text-[12px] text-ink-3">{t('week.proposalHint')}</p>}
+                <div className="font-medium text-ink">{fitted.blocks.length ? t('week.proposalTitle', { count: fitted.blocks.length }) : t('week.proposalNone')}</div>
+                {fitted.summary && <p className="mt-1 leading-relaxed text-ink-2">{fitted.summary}</p>}
+                {fitted.dropped > 0 && <p className="mt-1 text-[12px] text-ink-3">{t('week.proposalDropped', { count: fitted.dropped })}</p>}
+                {fitted.blocks.length > 0 && <p className="mt-1 text-[12px] text-ink-3">{t('week.proposalHint')}</p>}
               </>
             )}
           </div>
           {proposal.status !== 'loading' && (
             <div className="flex shrink-0 gap-2">
-              {proposal.status === 'ready' && proposal.blocks.length > 0 && (
+              {fitted && fitted.blocks.length > 0 && (
                 <Button size="sm" variant="primary" onClick={applyProposal}>
                   {t('week.applyProposal')}
                 </Button>
@@ -279,7 +301,7 @@ function DayRow({ date, today, proposed, onDropProposed }: { date: ISODate; toda
   const past = date < today
   const compact = !cap.isWorkDay && dayEvents.length === 0 && dayBlocks.length === 0
   const total = Math.max(cap.workMinutes, cap.uncoveredMeetingMinutes + cap.blockMinutes, 1)
-  const over = cap.uncoveredMeetingMinutes + cap.blockMinutes > cap.workMinutes && cap.isWorkDay
+  const over = isOverplanned(cap)
   const capOf = (id: string) => cap.blocks.find((b) => b.id === id)
   const cycleSize = (b: PlanBlock) => {
     const i = BLOCK_SIZES.indexOf(b.size)
@@ -361,7 +383,7 @@ function DayRow({ date, today, proposed, onDropProposed }: { date: ISODate; toda
               </Draggable>
             ))}
             {proposed.map((b) => (
-              <ProposedChip key={b.key} block={b} project={b.projectId ? (projectMap.get(b.projectId) ?? null) : null} onRemove={() => onDropProposed(b.key)} />
+              <ProposedChip key={b.key} block={b} project={b.projectId ? (activeProjects.find((p) => p.id === b.projectId) ?? null) : null} onRemove={() => onDropProposed(b.key)} />
             ))}
           </div>
         )}

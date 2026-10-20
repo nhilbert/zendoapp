@@ -110,7 +110,11 @@
       "noKey": "Kein KI-Schlüssel auf dem Zendo-Server (ANTHROPIC_API_KEY).",
       "errAuth": "der Anbieter hat den API-Schlüssel abgelehnt",
       "errRate": "Ratenlimit erreicht – in einer Minute erneut versuchen",
-      "errRefused": "das Modell hat diese Notiz abgelehnt",
+      "errRefused": "das Modell hat die Anfrage abgelehnt",
+      "errTruncated": "die Antwort wurde abgeschnitten – bitte erneut versuchen",
+      "errBadResponse": "die Antwort war nicht lesbar – bitte erneut versuchen",
+      "errUnreachable": "der KI-Anbieter ist nicht erreichbar",
+      "errTimeout": "keine Antwort in der vorgesehenen Zeit – bitte erneut versuchen",
       "errServer": "der Zendo-Server ist nicht erreichbar"
     },
     "back": "Zurück",

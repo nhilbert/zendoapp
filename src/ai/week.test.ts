@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CalendarEvent, PlanBlock, Project, Task } from '../domain/types'
 import { DEFAULT_SETTINGS } from '../domain/types'
 import { type WeekContext, buildWeekPrompt, fitProposal, parseWeekProposal } from './week'
+import { dayCapacity, isOverplanned } from '../domain/selectors'
 
 // Default settings: Mon–Fri, 08:00–18:00 (600 min), a full-day block = 8 h (480 min).
 const project = (p: Partial<Project>): Project => ({ id: 'p', name: 'P', status: 'active', color: 'sage', createdAt: '', updatedAt: '', ...p })
@@ -81,5 +82,79 @@ describe('fitProposal', () => {
     )
     expect(fitted.blocks.map((x) => `${x.date} ${x.projectId} ${x.size}`)).toEqual(['2026-10-20 p1 0.75', '2026-10-22 p1 1', '2026-10-22 null 0.25'])
     expect(fitted.dropped).toBe(8)
+  })
+})
+
+// Regressions from the code review of the week proposal (numbers refer to its findings).
+describe('week proposal review regressions', () => {
+  const b = (date: string, projectId: string | null, size: 0.25 | 0.5 | 0.75 | 1) => ({ date, projectId, size, note: null, reason: null })
+  const tag = (x: { date: string; projectId: string | null; size: number }) => `${x.date} ${x.projectId} ${x.size}`
+  const empty = { events: [], blocks: [] }
+
+  it('#3 offers only the rest of today, in the fit and in the prompt', () => {
+    // Tue 2026-10-20 without meetings, working day 08:00–18:00; at 14:00 4 h are left.
+    const c = ctx({ ...empty, dates: ['2026-10-20', '2026-10-22'], now: '14:00' })
+    const fitted = fitProposal({ summary: '', dropped: 0, blocks: [b('2026-10-20', 'p1', 1), b('2026-10-20', null, 0.75), b('2026-10-20', null, 0.5), b('2026-10-22', 'p1', 1)] }, c)
+    expect(fitted.blocks.map(tag)).toEqual(['2026-10-20 null 0.5', '2026-10-22 p1 1'])
+    expect(buildWeekPrompt(c)).toContain('- 2026-10-20 Tue (today, from 14:00): 4 h free; no meetings')
+    // At 16:30 (1.5 h left) not even a quarter-day block fits; a meeting that is already over no longer counts.
+    const late = ctx({ ...empty, dates: ['2026-10-20'], now: '16:30', events: [event({ start: '09:00', end: '12:00' })] })
+    expect(fitProposal({ summary: '', dropped: 0, blocks: [b('2026-10-20', null, 0.25)] }, late).blocks).toEqual([])
+    expect(buildWeekPrompt(late)).toContain('(today, from 16:30): 1.5 h free; no meetings')
+  })
+
+  it('#7 never accepts a block that Week would show as overplanned', () => {
+    // Thu: a 130-minute meeting without a project + a full-day chores block = 610 of 600 minutes.
+    const c = ctx({ dates: ['2026-10-22'], blocks: [], events: [event({ date: '2026-10-22', start: '09:00', end: '11:10' })] })
+    expect(fitProposal({ summary: '', dropped: 0, blocks: [b('2026-10-22', null, 1)] }, c).blocks).toEqual([])
+    const ok = fitProposal({ summary: '', dropped: 0, blocks: [b('2026-10-22', null, 0.75), b('2026-10-22', 'p1', 0.25)] }, c)
+    expect(ok.blocks.map(tag)).toEqual(['2026-10-22 null 0.75'])
+    const after = dayCapacity('2026-10-22', c.settings, c.events, ok.blocks.map((x, i) => ({ id: String(i), date: x.date, projectId: x.projectId, size: x.size })), [])
+    expect(isOverplanned(after)).toBe(false)
+  })
+
+  it('#4 #1 re-checks against the current plan and keeps the browser keys', () => {
+    // Since the proposal arrived: Strategy was dragged onto Thursday, project "gone" was archived or deleted,
+    // and "h" is a private project that is now hidden – none of them is in the projects that may be planned.
+    const c = ctx({ dates: ['2026-10-22', '2026-10-23'], events: [], blocks: [{ id: 'mine', date: '2026-10-22', projectId: 'p1', size: 0.5 }] })
+    const fitted = fitProposal(
+      {
+        summary: 's',
+        dropped: 1,
+        blocks: [
+          { ...b('2026-10-22', 'p1', 0.5), key: 'dup' },
+          { ...b('2026-10-23', 'gone', 0.5), key: 'gone' },
+          { ...b('2026-10-23', 'h', 0.5), key: 'private' },
+          { ...b('2026-10-23', null, 0.25), key: 'chores' },
+        ],
+      },
+      c,
+    )
+    expect(fitted.blocks.map((x) => x.key)).toEqual(['chores'])
+    expect(fitted.dropped).toBe(4)
+  })
+
+  it('#9 #13 drops blocks with a non-string project id or an impossible date', () => {
+    const p = parseWeekProposal(
+      JSON.stringify({
+        summary: 's',
+        blocks: [
+          { date: '2026-10-22', projectId: 42, size: 0.5 },
+          { date: '2026-10-22', projectId: { id: 'p1' }, size: 0.5 },
+          { date: '2026-10-22', size: 0.5 },
+          { date: '2026-02-31', projectId: 'p1', size: 0.5 },
+          { date: '2026-10-22', projectId: null, size: 0.5 },
+        ],
+      }),
+    )
+    expect(p.blocks).toEqual([{ date: '2026-10-22', projectId: null, size: 0.5, note: null, reason: null }])
+    expect(p.dropped).toBe(4)
+    expect(() => parseWeekProposal('{"summary": "s", "blocks": [}')).toThrow('ai_bad_response')
+  })
+
+  it('#15 lists per-project meeting hours as capacity counts them', () => {
+    // A 2-hour workshop costs half the 10-hour day: 5 h, in the total and in the per-project figure.
+    const c = ctx({ dates: ['2026-10-22'], blocks: [], events: [event({ date: '2026-10-22', kind: 'workshop', start: '09:00', end: '11:00', projectId: 'p1' })] })
+    expect(buildWeekPrompt(c)).toContain('- 2026-10-22 Thu: 5 h free; meetings 5 h ("Strategy" 5 h); no blocks yet')
   })
 })

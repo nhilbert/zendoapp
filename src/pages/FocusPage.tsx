@@ -8,8 +8,9 @@ import { fmtHours, fmtTime, toISODate, todayISO } from '@/domain/dates'
 import { blocksOn, eventsOn, isOpen, nextActionOf, safeTimes, sortTasks } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useUi } from '@/store/useUi'
-import { Button, Checkbox, SectionLabel, Textarea, cx } from '@/components/ui'
-import { ProjectDot, TaskMeta, projectVars, useLocale } from '@/components/TaskBits'
+import { useVisibleEvents } from '@/store/visible'
+import { Button, Checkbox, SectionLabel, Textarea, isTyping } from '@/components/ui'
+import { ProjectDot, TaskMeta, TaskRow, projectVars, useLocale } from '@/components/TaskBits'
 
 const THEN_LIMIT = 5
 
@@ -26,7 +27,7 @@ export default function FocusPage() {
   const { id } = useParams()
   const project = useStore((s) => s.projects.find((p) => p.id === id))
   const tasks = useStore((s) => s.tasks)
-  const events = useStore((s) => s.events)
+  const events = useVisibleEvents() // private appointments stay masked while hiding
   const blocks = useStore((s) => s.blocks)
   const settings = safeTimes(useStore((s) => s.settings))
   const completeTask = useStore((s) => s.completeTask)
@@ -37,9 +38,16 @@ export default function FocusPage() {
   const [showAll, setShowAll] = useState(false)
   const [newNext, setNewNext] = useState('')
   const [newTask, setNewTask] = useState('')
+  // Opens with existing notes; afterwards only the user toggles it (emptying the notes must not collapse it mid-edit).
+  const [notesOpen, setNotesOpen] = useState(() => !!project?.notes?.trim())
 
   const from = (location.state as { from?: string } | null)?.from
-  const exit = () => navigate(from ?? (project ? `/projects/${project.id}` : '/today'))
+  // Back to where focus was started, as it was (Today keeps its ?date=), so browser Back does not re-enter focus.
+  // Opened from a link without history: replace the focus entry with the project.
+  const exit = () => {
+    if (from && (window.history.state as { idx?: number } | null)?.idx) navigate(-1)
+    else navigate(from ?? (project ? `/projects/${project.id}` : '/today'), { replace: true })
+  }
   const exitRef = useRef(exit)
   exitRef.current = exit
   useEffect(() => {
@@ -48,9 +56,8 @@ export default function FocusPage() {
       if (e.key !== 'Escape' || e.metaKey || e.ctrlKey || e.altKey) return
       const ui = useUi.getState()
       if (ui.captureOpen || ui.taskId || ui.event) return
-      const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-        el.blur()
+      if (isTyping(e.target)) {
+        ;(e.target as HTMLElement).blur()
         return
       }
       exitRef.current()
@@ -160,7 +167,7 @@ export default function FocusPage() {
           <SectionLabel>{t('focus.then')}</SectionLabel>
           <ul className="flex flex-col">
             {(showAll ? then : then.slice(0, THEN_LIMIT)).map((x) => (
-              <FocusRow key={x.id} task={x} onOpen={() => openTask(x.id)} onDone={(v) => completeTask(x.id, v)} onMakeNext={() => setTaskStatus(x.id, 'next')} />
+              <TaskRow key={x.id} task={x} onMakeNext={() => setTaskStatus(x.id, 'next')} />
             ))}
           </ul>
           {then.length > THEN_LIMIT && !showAll && (
@@ -176,7 +183,7 @@ export default function FocusPage() {
           <SectionLabel>{t('focus.waiting')}</SectionLabel>
           <ul className="flex flex-col">
             {waiting.map((x) => (
-              <FocusRow key={x.id} task={x} onOpen={() => openTask(x.id)} onDone={(v) => completeTask(x.id, v)} />
+              <TaskRow key={x.id} task={x} />
             ))}
           </ul>
         </section>
@@ -187,7 +194,7 @@ export default function FocusPage() {
           <SectionLabel>{t('focus.doneToday')}</SectionLabel>
           <ul className="flex flex-col">
             {doneToday.map((x) => (
-              <FocusRow key={x.id} task={x} onOpen={() => openTask(x.id)} onDone={(v) => completeTask(x.id, v)} />
+              <TaskRow key={x.id} task={x} />
             ))}
           </ul>
         </section>
@@ -203,30 +210,12 @@ export default function FocusPage() {
         <input value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder={t('focus.addTask')} className="w-full border-b border-line bg-transparent px-2 py-2 text-[14px] placeholder:text-ink-3 focus:border-line-2 focus:outline-none" />
       </form>
 
-      <details className="mt-8" open={!!project.notes?.trim()}>
+      <details className="mt-8" open={notesOpen} onToggle={(e) => setNotesOpen(e.currentTarget.open)}>
         <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">{t('focus.notes')}</summary>
         <Textarea value={project.notes ?? ''} onChange={(e) => updateProject(project.id, { notes: e.target.value })} className="mt-3 min-h-[120px]" />
       </details>
 
       <p className="mt-10 hidden text-center text-[12px] text-ink-3 md:block">{t('focus.hint')}</p>
     </div>
-  )
-}
-
-function FocusRow({ task, onOpen, onDone, onMakeNext }: { task: Task; onOpen: () => void; onDone: (done: boolean) => void; onMakeNext?: () => void }) {
-  const { t } = useTranslation()
-  return (
-    <li className="group flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-surface-2">
-      <Checkbox checked={task.status === 'done'} onChange={onDone} className="mt-[3px]" />
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-        <div className={cx('text-[14px]', task.status === 'done' && 'strike')}>{task.title}</div>
-        <TaskMeta task={task} hideProject className="mt-1" />
-      </button>
-      {onMakeNext && (
-        <Button variant="ghost" size="sm" className="reveal opacity-0 group-hover:opacity-100" onClick={onMakeNext}>
-          {t('project.makeNext')}
-        </Button>
-      )}
-    </li>
   )
 }

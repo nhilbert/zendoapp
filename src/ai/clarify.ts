@@ -3,6 +3,7 @@
  * Used by the server (server/ai.ts) and by the browser fallback (src/ai/browser.ts).
  */
 import type { ISODate, Locale, Priority } from '../domain/types.ts'
+import { isISODate } from '../domain/dates.ts'
 
 export interface ClarifySuggestion {
   kind: 'task' | 'project' | 'meeting' | 'someday' | 'trash'
@@ -75,7 +76,11 @@ export function extractJsonObject(raw: string): Record<string, unknown> {
   const start = cleaned.indexOf('{')
   const end = cleaned.lastIndexOf('}')
   if (start < 0 || end <= start) throw new Error('ai_bad_response')
-  return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>
+  } catch {
+    throw new Error('ai_bad_response')
+  }
 }
 
 /** Tolerant parser: accepts fenced or embedded JSON and drops anything that does not fit. */
@@ -85,7 +90,7 @@ export function parseClarifySuggestion(raw: string): ClarifySuggestion {
   const kind = kinds.includes(json.kind as (typeof kinds)[number]) ? (json.kind as ClarifySuggestion['kind']) : 'task'
   const priorities: Priority[] = ['high', 'normal', 'low']
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
-  const date = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null)
+  const date = (v: unknown) => (isISODate(v) ? v : null)
   return {
     kind,
     title: str(json.title) ?? '',
