@@ -7,19 +7,19 @@ import type { ISODate, PlanBlock, Project } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
 import { BLOCK_SIZES, BLOCK_SIZE_LABEL } from '@/domain/types'
 import { addDaysISO, fmtDate, fmtHours, fmtTime, fmtWeekday, isoWeekNumber, nowHHMM, rangeISO, startOfWeekISO, todayISO } from '@/domain/dates'
-import { blocksOn, dayCapacity, eventsOn, isBlocking, isOverplanned, tasksDueOn, visibleBlocks } from '@/domain/selectors'
+import { blocksOn, dayCapacity, eventsOn, isBlocking, isOverplanned, tasksDueOn, visibleBlocks, type DayCapacity } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
 import { Button, IconButton, PageHeader, cx, useIsPhone } from '@/components/ui'
 import { ProjectDot, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
-import { JoinLink } from '@/components/JoinLink'
 import { type ProposedBlock, fitProposal } from '@/ai/week'
 import { aiErrorText } from '@/ai/errors'
 import { NotConfigured } from '@/sync/api'
 
 const CHORES = 'chores'
+const MEETING = 'meeting'
 
 type Proposed = ProposedBlock & { key: string }
 type ProposalState = { status: 'loading' } | { status: 'ready'; summary: string; blocks: Proposed[]; dropped: number } | { status: 'error'; message: string }
@@ -301,8 +301,6 @@ function DayRow({ date, today, proposed, onDropProposed }: { date: ISODate; toda
   const isToday = date === today
   const past = date < today
   const compact = !cap.isWorkDay && dayEvents.length === 0 && dayBlocks.length === 0
-  const total = Math.max(cap.workMinutes, cap.uncoveredMeetingMinutes + cap.blockMinutes, 1)
-  const over = isOverplanned(cap)
   const capOf = (id: string) => cap.blocks.find((b) => b.id === id)
   const cycleSize = (b: PlanBlock) => {
     const i = BLOCK_SIZES.indexOf(b.size)
@@ -311,52 +309,55 @@ function DayRow({ date, today, proposed, onDropProposed }: { date: ISODate; toda
 
   return (
     <Droppable id={`day:${date}`} className={cx('group flex gap-4 px-4 transition-colors', compact ? 'py-1.5' : 'py-3', past && 'opacity-60', isToday && 'bg-accent-soft/30')} overClassName="bg-accent-soft/70">
-      <Link to={`/today?date=${date}`} className="w-14 shrink-0 pt-0.5 hover:text-accent">
-        <div className={cx('text-[11px] uppercase tracking-wide', isToday ? 'text-accent' : 'text-ink-3')}>{fmtWeekday(date, locale)}</div>
-        <div className={cx('tnum text-[18px] leading-tight', isToday ? 'font-medium text-accent' : 'text-ink')}>{Number(date.slice(8, 10))}</div>
-      </Link>
-      <div className="min-w-0 flex-1">
+      <div className="relative w-16 shrink-0 pt-0.5">
+        {/* One "+" for a block or a meeting; no drag needed, so it works on phones and with the keyboard. */}
         {!compact && (
-          <div className="flex items-center gap-3">
-            <div className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
-              {cap.uncoveredMeetingMinutes > 0 && <div className="h-full bg-ink-3" style={{ width: `${(cap.uncoveredMeetingMinutes / total) * 100}%` }} />}
-              {cap.blocks.map((b) => (
-                <div key={b.id} className="flex h-full" style={{ ...projectVars(b.projectId ? projectMap.get(b.projectId)?.color : null), width: `${(b.minutes / total) * 100}%` }}>
-                  {b.meetingMinutes > 0 && <div className="pc-dark h-full" style={{ width: `${(b.meetingMinutes / b.minutes) * 100}%` }} />}
-                  <div className="pc-dot h-full flex-1" />
-                </div>
-              ))}
-            </div>
-            <span className={cx('tnum shrink-0 text-[11px]', over ? 'text-amber' : 'text-ink-3')}>
-              {!cap.isWorkDay ? t('week.offDay') : over ? t('week.overplanned') : cap.fullDay ? t('week.fullDay') : t('week.free', { hours: fmtHours(cap.freeMinutes, locale) })}
-            </span>
-            {/* Non-drag way to add a block: works on phones and with the keyboard. */}
-            <label className="reveal relative text-ink-3 opacity-0 transition-opacity hover:text-ink focus-within:opacity-100 group-hover:opacity-100" title={t('week.addBlock')}>
-              <span className="sr-only">{t('week.addBlock')}</span>
-              <span aria-hidden className="flex h-5 items-center rounded-full border border-line px-1.5 text-[10px] uppercase tracking-wide">{t('week.block')}</span>
-              <select
-                className="absolute inset-0 cursor-pointer opacity-0"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) addBlock(date, e.target.value === CHORES ? null : e.target.value, 0.5)
-                }}
-              >
-                <option value="">{t('week.addBlock')}</option>
+          <label className="reveal absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full text-ink-3 opacity-0 transition-opacity hover:bg-surface-2 hover:text-ink focus-within:opacity-100 group-hover:opacity-100" title={t('week.add')}>
+            <span className="sr-only">{t('week.add')}</span>
+            <Plus size={14} aria-hidden />
+            <select
+              className="absolute inset-0 cursor-pointer opacity-0"
+              value=""
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === MEETING) openEvent(null, { date })
+                else if (v) addBlock(date, v === CHORES ? null : v, 0.5)
+              }}
+            >
+              <option value="">{t('week.add')}</option>
+              <optgroup label={t('week.addBlock')}>
                 {activeProjects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
                 <option value={CHORES}>{t('week.chores')}</option>
-              </select>
-            </label>
-            <button type="button" onClick={() => openEvent(null, { date })} className="reveal text-ink-3 opacity-0 transition-opacity hover:text-ink group-hover:opacity-100" aria-label={t('week.addMeeting')}>
-              <Plus size={14} />
-            </button>
+              </optgroup>
+              <option value={MEETING}>{t('week.addMeeting')}</option>
+            </select>
+          </label>
+        )}
+        <Link to={`/today?date=${date}`} className="block hover:text-accent">
+          <div className={cx('text-[11px] uppercase tracking-wide', isToday ? 'text-accent' : 'text-ink-3')}>{fmtWeekday(date, locale)}</div>
+          <div className={cx('tnum text-[18px] leading-tight', isToday ? 'font-medium text-accent' : 'text-ink')}>{Number(date.slice(8, 10))}</div>
+        </Link>
+        {!compact && cap.isWorkDay && <DayLoad cap={cap} />}
+      </div>
+      <div className="min-w-0 flex-1">
+        {!compact && (
+          <div className="flex min-h-[24px] flex-wrap items-start gap-1.5">
+            {dayBlocks.map((b) => (
+              <Draggable key={b.id} id={`block:${b.id}`} className="max-w-full">
+                <BlockChip block={b} project={b.projectId ? (projectMap.get(b.projectId) ?? null) : null} onCycle={() => cycleSize(b)} onRemove={() => removeBlock(b.id)} absorbed={capOf(b.id)} />
+              </Draggable>
+            ))}
+            {proposed.map((b) => (
+              <ProposedChip key={b.key} block={b} project={b.projectId ? (activeProjects.find((p) => p.id === b.projectId) ?? null) : null} onRemove={() => onDropProposed(b.key)} />
+            ))}
           </div>
         )}
         {dayEvents.length > 0 && (
-          <ul className="mt-2 flex flex-col gap-0.5">
+          <ul className={cx('flex flex-col gap-0.5', !compact && 'mt-1.5')}>
             {dayEvents.map((e) => (
               <EventLine key={e.id} event={e} />
             ))}
@@ -376,20 +377,49 @@ function DayRow({ date, today, proposed, onDropProposed }: { date: ISODate; toda
             ))}
           </ul>
         )}
-        {!compact && (
-          <div className="mt-2 flex min-h-[26px] flex-wrap gap-1.5">
-            {dayBlocks.map((b) => (
-              <Draggable key={b.id} id={`block:${b.id}`} className="max-w-full">
-                <BlockChip block={b} project={b.projectId ? (projectMap.get(b.projectId) ?? null) : null} onCycle={() => cycleSize(b)} onRemove={() => removeBlock(b.id)} absorbed={capOf(b.id)} />
-              </Draggable>
-            ))}
-            {proposed.map((b) => (
-              <ProposedChip key={b.key} block={b} project={b.projectId ? (activeProjects.find((p) => p.id === b.projectId) ?? null) : null} onRemove={() => onDropProposed(b.key)} />
-            ))}
-          </div>
-        )}
       </div>
     </Droppable>
+  )
+}
+
+/**
+ * The day's load under the date: a small ring (meetings grey, planned blocks in their project colour with the
+ * project's own meetings darker, the rest free) and the free hours next to it; amber when overplanned.
+ */
+function DayLoad({ cap }: { cap: DayCapacity }) {
+  const { t } = useTranslation()
+  const locale = useLocale()
+  const projectMap = useProjectMap()
+  const used = cap.uncoveredMeetingMinutes + cap.blockMinutes
+  const total = Math.max(cap.workMinutes, used, 1)
+  const over = isOverplanned(cap)
+  const stops: string[] = []
+  let at = 0
+  const add = (color: string, minutes: number) => {
+    if (minutes <= 0) return
+    const to = at + (minutes / total) * 100
+    stops.push(`${color} ${at}% ${to}%`)
+    at = to
+  }
+  add('var(--ink-3)', cap.uncoveredMeetingMinutes)
+  for (const b of cap.blocks) {
+    const color = `var(--c-${(b.projectId && projectMap.get(b.projectId)?.color) || 'neutral'})`
+    add(`color-mix(in oklab, ${color} 60%, var(--ink))`, b.meetingMinutes)
+    add(color, b.minutes - b.meetingMinutes)
+  }
+  stops.push(`var(--surface-3) ${at}% 100%`)
+  // a ring, not a disc: the mask cuts the middle out, so today's tint and the drop highlight show through
+  const hole = 'radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px))'
+  const title = over ? t('week.overplanned') : cap.fullDay ? t('week.fullDay') : t('week.free', { hours: fmtHours(cap.freeMinutes, locale) })
+  return (
+    <div className={cx('tnum mt-1.5 flex items-center gap-1.5 whitespace-nowrap text-[11px]', over ? 'text-amber' : 'text-ink-3')} title={title}>
+      {/* the outline sits on a wrapper: the mask would cut it off the ring itself */}
+      <span aria-hidden className={cx('shrink-0 rounded-full', over && 'outline outline-[1.5px] outline-offset-1 outline-amber')}>
+        <span className="block h-5 w-5 rounded-full" style={{ background: `conic-gradient(${stops.join(', ')})`, mask: hole, WebkitMask: hole }} />
+      </span>
+      <span className="sr-only">{title}</span>
+      <span aria-hidden>{over ? `−${fmtHours(used - cap.workMinutes, locale)}` : cap.fullDay ? t('week.fullDayShort') : fmtHours(cap.freeMinutes, locale)}</span>
+    </div>
   )
 }
 
@@ -435,7 +465,6 @@ function EventLine({ event }: { event: VisibleEvent }) {
         {!isBlocking(event) && <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
         {project && <ProjectDot color={project.color} size={6} />}
       </button>
-      <JoinLink event={event} />
     </li>
   )
 }
