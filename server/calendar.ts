@@ -111,7 +111,7 @@ export function calendarService(cfg: CalendarConfig, repo: Repo): CalendarServic
   const fetchCalendarView = async (accessToken: string, from: string, to: string): Promise<GraphEvent[]> => {
     let url: string | undefined =
       `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(`${from}T00:00:00`)}&endDateTime=${encodeURIComponent(`${to}T23:59:59`)}` +
-      `&$select=id,subject,start,end,showAs,sensitivity,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingUrl,location&$orderby=start/dateTime&$top=200`
+      `&$select=id,subject,start,end,showAs,sensitivity,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingUrl,onlineMeeting,bodyPreview,location&$orderby=start/dateTime&$top=200`
     const items: GraphEvent[] = []
     while (url) {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Prefer: `outlook.timezone="${cfg.timezone}"` } })

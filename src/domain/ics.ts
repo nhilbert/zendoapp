@@ -1,5 +1,6 @@
 import type { Availability, CalendarEvent, EventKind, ISODate } from './types.ts'
 import { addDaysISO, toISODate } from './dates.ts'
+import { findMeetingUrl, safeJoinUrl } from './meeting.ts'
 
 /**
  * Minimal iCalendar (.ics) parser – enough for a prototype import of an Outlook
@@ -116,6 +117,9 @@ export function parseIcs(text: string): IcsImportResult {
     if (line === 'END:VEVENT' && cur) {
       const summary = cur.SUMMARY ? unescapeText(cur.SUMMARY.value) : '(untitled)'
       const location = cur.LOCATION ? unescapeText(cur.LOCATION.value) : undefined
+      // Outlook exports the Teams link in its own property; Zoom and others sit in location or description.
+      const joinUrl =
+        safeJoinUrl(cur['X-MICROSOFT-SKYPETEAMSMEETINGURL']?.value) ?? findMeetingUrl(location, cur.URL?.value, cur.DESCRIPTION ? unescapeText(cur.DESCRIPTION.value) : undefined)
       if (cur.RRULE) skippedRecurring += 1
       const cancelled = (cur.STATUS?.value ?? '').toUpperCase() === 'CANCELLED'
       if (cur.DTSTART && !cancelled) {
@@ -130,6 +134,7 @@ export function parseIcs(text: string): IcsImportResult {
           availability: parseAvailability(cur['X-MICROSOFT-CDO-BUSYSTATUS']?.value, cur.TRANSP?.value),
           private: /^(PRIVATE|CONFIDENTIAL)$/i.test(cur.CLASS?.value ?? '') || undefined,
           location,
+          joinUrl,
           source: 'ics' as const,
         }
         // Multi-day events become one entry per day (DTEND is exclusive for all-day events).

@@ -48,3 +48,28 @@ describe('timed multi-day events', () => {
     ])
   })
 })
+
+describe('join links from Outlook', () => {
+  const teams = 'https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d'
+  it('takes the Teams link Outlook supplies, then the old field, then a Zoom link in location or body preview', () => {
+    const [t, old, loc, body, none, bad] = mapGraphEvents(
+      [
+        item({ id: 'T', isOnlineMeeting: true, onlineMeeting: { joinUrl: teams }, bodyPreview: 'see https://zoom.us/j/1' }),
+        item({ id: 'O', onlineMeetingUrl: 'https://teams.microsoft.com/l/meetup-join/old' }),
+        item({ id: 'L', location: { displayName: 'https://us02web.zoom.us/j/81234567890?pwd=abc.1' } }),
+        item({ id: 'B', subject: 'Strategy workshop', location: { displayName: 'Büro Köln' }, bodyPreview: 'Remote: Join Zoom Meeting https://zoom.us/j/555 Meeting ID: 555' }),
+        item({ id: 'N', location: { displayName: 'Büro Köln' }, bodyPreview: 'Directions: https://maps.google.com/?q=koeln' }),
+        item({ id: 'X', onlineMeeting: { joinUrl: 'javascript:alert(1)' } }),
+      ],
+      range,
+    )
+    expect(t.joinUrl).toBe(teams)
+    expect(old.joinUrl).toBe('https://teams.microsoft.com/l/meetup-join/old')
+    expect(loc.joinUrl).toBe('https://us02web.zoom.us/j/81234567890?pwd=abc.1')
+    expect(body.joinUrl).toBe('https://zoom.us/j/555')
+    // a link in the body does not turn a hybrid workshop into an online meeting (capacity rules differ)
+    expect(body.kind).toBe('workshop')
+    expect(none.joinUrl).toBeUndefined()
+    expect(bad.joinUrl).toBeUndefined()
+  })
+})

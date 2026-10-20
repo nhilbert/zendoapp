@@ -293,6 +293,8 @@
     "title": "Title",
     "kind": "Kind",
     "location": "Location",
+    "meetingLink": "Meeting link",
+    "meetingLinkHint": "Teams, Zoom … – optional",
     "date": "Date",
     "start": "Start",
     "end": "End",
@@ -307,7 +309,10 @@
     },
     "availability": "Blocks time",
     "freeTag": "free",
-    "invalidTimes": "Please enter a date, and an end time after the start time."
+    "invalidTimes": "Please enter a date, and an end time after the start time.",
+    "invalidLink": "Enter a web link (https://…).",
+    "join": "Join",
+    "joinWith": "Join in {{app}}"
   },
   "review": {
     "title": "Review",

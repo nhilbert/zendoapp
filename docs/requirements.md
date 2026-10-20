@@ -132,6 +132,7 @@ Priority: **M** must, **S** should, **C** could.
 - **CAL-3 (S) [ ]** Fallback: published ICS feed polled by the local server (if app registration is not possible in the tenant).
 - **CAL-4 (C) [ ]** Write-back: create "focus" calendar entries from plan blocks so others see busy time.
 - **CAL-5 (S) [p]** Classify events by kind (online, in person, workshop, coaching) and link to projects; heuristics on import, editable.
+- **CAL-9 (S) [P]** One-click join for online meetings (owner's request, 2026-10-20): a Join button on the meeting in Today, Week, focus mode and the event dialog. The link comes from Outlook (`onlineMeeting.joinUrl` for Teams, else a Teams/Zoom/Webex/Meet link in location or body preview), from an ICS import (Outlook's Teams property, location, description) or from the event's meeting-link field; a meeting link typed into the location works too. On a computer Teams and Zoom open straight in the app (`msteams:`, `zoommtg:`), on phones the web link opens the app. Only http(s) links are ever opened; private meetings show no link while private items are hidden.
 
 ### 5.13 AI assistance (optional, bring your own key)
 - **AI-1 (M) [P]** Settings: choose provider (Claude/Anthropic or ChatGPT/OpenAI), paste API key, optional model override. Key is stored only locally and excluded from exports.

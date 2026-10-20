@@ -54,15 +54,15 @@ export type VisibleEvent = CalendarEvent & { masked?: boolean }
 
 /**
  * Events are never removed while hiding private items – their time is still
- * taken – but private ones are masked: generic title, no location, no project,
- * and they cannot be opened.
+ * taken – but private ones are masked: generic title, no location, no join link,
+ * no project, and they cannot be opened.
  */
 export function useVisibleEvents(): VisibleEvent[] {
   const events = useStore((s) => s.events)
   const hide = useHidePrivate()
   const { t, i18n } = useTranslation()
   return useMemo(
-    () => (hide ? events.map((e) => (e.private ? { ...e, title: t('privacy.privateEvent'), location: undefined, masked: true } : e)) : events),
+    () => (hide ? events.map((e) => (e.private ? { ...e, title: t('privacy.privateEvent'), location: undefined, joinUrl: undefined, masked: true } : e)) : events),
     [events, hide, t, i18n.language],
   )
 }

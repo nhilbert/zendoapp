@@ -111,3 +111,15 @@ END:VCALENDAR
     expect(trip.every((e) => e.allDay)).toBe(true)
   })
 })
+
+describe('join links from ICS', () => {
+  const ics = (props: string) => `BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:J1\nSUMMARY:Call\nDTSTART:20261020T100000\nDTEND:20261020T110000\n${props}\nEND:VEVENT\nEND:VCALENDAR\n`
+  it('reads the Teams property Outlook exports, else a meeting link in location or description', () => {
+    const [teams] = parseIcs(ics('X-MICROSOFT-SKYPETEAMSMEETINGURL:https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0')).events
+    expect(teams.joinUrl).toBe('https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0')
+    const [zoom] = parseIcs(ics('LOCATION:Büro\\, Raum 2\nDESCRIPTION:Hi all\\,\\nJoin Zoom Meeting\\nhttps://us02web.zoom.us/j/812?pwd=abc.1\\nMeeting ID: 812')).events
+    expect(zoom.joinUrl).toBe('https://us02web.zoom.us/j/812?pwd=abc.1')
+    const [none] = parseIcs(ics('DESCRIPTION:Agenda https://example.com/agenda')).events
+    expect(none.joinUrl).toBeUndefined()
+  })
+})

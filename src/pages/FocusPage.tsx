@@ -11,6 +11,7 @@ import { useUi } from '@/store/useUi'
 import { useVisibleEvents } from '@/store/visible'
 import { Button, Checkbox, SectionLabel, Textarea, isTyping } from '@/components/ui'
 import { ProjectDot, TaskMeta, TaskRow, projectVars, useLocale } from '@/components/TaskBits'
+import { JoinLink } from '@/components/JoinLink'
 
 const THEN_LIMIT = 5
 
@@ -119,7 +120,7 @@ export default function FocusPage() {
           {meetings.map((e) => (
             <span key={e.id}>
               {' · '}
-              {fmtTime(e.start, locale)}–{fmtTime(e.end, locale)} {e.title}
+              {fmtTime(e.start, locale)}–{fmtTime(e.end, locale)} {e.title} <JoinLink event={e} className="ml-1 align-[1px]" />
             </span>
           ))}
         </p>

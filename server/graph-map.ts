@@ -3,6 +3,7 @@
  * No I/O here so it can be unit-tested. Keep guessKind in sync with src/domain/ics.ts.
  */
 import type { Availability, CalendarEvent, EventKind } from '../src/domain/types.ts'
+import { findMeetingUrl, safeJoinUrl } from '../src/domain/meeting.ts'
 
 export interface GraphEvent {
   id: string
@@ -15,6 +16,10 @@ export interface GraphEvent {
   isCancelled?: boolean
   isOnlineMeeting?: boolean
   onlineMeetingUrl?: string | null
+  /** Teams (and other provider) meetings created in Outlook carry their join link here */
+  onlineMeeting?: { joinUrl?: string | null } | null
+  /** first ~255 characters of the body as text: Zoom and other add-ins put their link there; only scanned, never stored */
+  bodyPreview?: string | null
   location?: { displayName?: string | null } | null
 }
 
@@ -59,7 +64,9 @@ export function mapGraphEvents(items: GraphEvent[], { from, to }: { from: string
     if (item.isCancelled) continue
     const title = item.subject?.trim() || '(untitled)'
     const location = item.location?.displayName?.trim() || undefined
-    const kind = guessKind(title, location, !!item.isOnlineMeeting || !!item.onlineMeetingUrl)
+    const joinUrl = safeJoinUrl(item.onlineMeeting?.joinUrl) ?? safeJoinUrl(item.onlineMeetingUrl) ?? findMeetingUrl(location, item.bodyPreview)
+    // Only the provider's own meeting flags decide the kind: a link in the body (a hybrid workshop) does not.
+    const kind = guessKind(title, location, !!item.isOnlineMeeting || !!item.onlineMeetingUrl || !!item.onlineMeeting?.joinUrl)
     const availability = mapAvailability(item.showAs)
     const isPrivate: true | undefined = ['private', 'personal', 'confidential'].includes((item.sensitivity ?? '').toLowerCase()) || undefined
     const startDate = item.start.dateTime.slice(0, 10)
@@ -68,7 +75,7 @@ export function mapGraphEvents(items: GraphEvent[], { from, to }: { from: string
       // Graph all-day events end at 00:00 of the day AFTER the last day. Expand to one entry per day.
       for (let d = startDate; d < endDate; d = addDays(d, 1)) {
         if (d < from || d > to) continue
-        events.push({ title, date: d, start: '00:00', end: '23:59', allDay: true, kind, availability, private: isPrivate, location, source: 'm365', externalId: `${item.id}#${d}` })
+        events.push({ title, date: d, start: '00:00', end: '23:59', allDay: true, kind, availability, private: isPrivate, location, joinUrl, source: 'm365', externalId: `${item.id}#${d}` })
       }
       continue
     }
@@ -84,7 +91,7 @@ export function mapGraphEvents(items: GraphEvent[], { from, to }: { from: string
     }
     for (const day of days) {
       if (day.date < from || day.date > to) continue
-      events.push({ title, ...day, allDay: false, kind, availability, private: isPrivate, location, source: 'm365', externalId: `${item.id}#${day.date}` })
+      events.push({ title, ...day, allDay: false, kind, availability, private: isPrivate, location, joinUrl, source: 'm365', externalId: `${item.id}#${day.date}` })
     }
   }
   return events

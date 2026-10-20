@@ -14,6 +14,7 @@ import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
 import { Button, IconButton, PageHeader, cx, useIsPhone } from '@/components/ui'
 import { ProjectDot, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
+import { JoinLink } from '@/components/JoinLink'
 import { type ProposedBlock, fitProposal } from '@/ai/week'
 import { aiErrorText } from '@/ai/errors'
 import { NotConfigured } from '@/sync/api'
@@ -421,11 +422,11 @@ function EventLine({ event }: { event: VisibleEvent }) {
   const openEvent = useUi((s) => s.openEvent)
   const project = event.projectId && !event.masked ? projectMap.get(event.projectId) : null
   return (
-    <li>
+    <li className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => !event.masked && openEvent(event.id)}
-        className={cx('flex w-full items-center gap-2 text-left text-[12.5px] text-ink-2', event.masked ? 'cursor-default' : 'hover:text-ink', !isBlocking(event) && 'opacity-60')}
+        className={cx('flex min-w-0 flex-1 items-center gap-2 text-left text-[12.5px] text-ink-2', event.masked ? 'cursor-default' : 'hover:text-ink', !isBlocking(event) && 'opacity-60')}
       >
         <span className="tnum w-[88px] shrink-0 text-ink-3">{event.allDay ? t('today.allDay') : `${fmtTime(event.start, locale)}–${fmtTime(event.end, locale)}`}</span>
         {event.kind === 'online' ? <Video size={12} className="shrink-0 text-ink-3" /> : <MapPin size={12} className="shrink-0 text-ink-3" />}
@@ -434,6 +435,7 @@ function EventLine({ event }: { event: VisibleEvent }) {
         {!isBlocking(event) && <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
         {project && <ProjectDot color={project.color} size={6} />}
       </button>
+      <JoinLink event={event} />
     </li>
   )
 }

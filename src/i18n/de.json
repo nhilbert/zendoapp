@@ -293,6 +293,8 @@
     "title": "Titel",
     "kind": "Art",
     "location": "Ort",
+    "meetingLink": "Besprechungslink",
+    "meetingLinkHint": "Teams, Zoom … – optional",
     "date": "Datum",
     "start": "Beginn",
     "end": "Ende",
@@ -307,7 +309,10 @@
     },
     "availability": "Blockiert Zeit",
     "freeTag": "frei",
-    "invalidTimes": "Bitte ein Datum und eine Endzeit nach der Startzeit angeben."
+    "invalidTimes": "Bitte ein Datum und eine Endzeit nach der Startzeit angeben.",
+    "invalidLink": "Bitte einen Weblink eingeben (https://…).",
+    "join": "Beitreten",
+    "joinWith": "In {{app}} beitreten"
   },
   "review": {
     "title": "Rückblick",

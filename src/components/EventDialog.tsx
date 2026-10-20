@@ -5,11 +5,13 @@ import { AVAILABILITIES, EVENT_KINDS } from '@/domain/types'
 import { isHHMM, isISODate, todayISO } from '@/domain/dates'
 import { useStore } from '@/store/useStore'
 import { useUi } from '@/store/useUi'
+import { safeJoinUrl } from '@/domain/meeting'
 import { Button, Checkbox, Field, Input, Modal, Select } from './ui'
+import { JoinLink } from './JoinLink'
 
 type Draft = Omit<CalendarEvent, 'id' | 'source'>
 
-const EMPTY: Draft = { title: '', date: todayISO(), start: '09:00', end: '10:00', kind: 'online', availability: 'busy', location: '', projectId: null, allDay: false }
+const EMPTY: Draft = { title: '', date: todayISO(), start: '09:00', end: '10:00', kind: 'online', availability: 'busy', location: '', joinUrl: '', projectId: null, allDay: false }
 
 /** Date must be a real date; unless all-day, start and end must be times and end after start. */
 export function isValidEventTimes(d: { date: string; start: string; end: string; allDay?: boolean }): boolean {
@@ -48,7 +50,12 @@ export default function EventDialog() {
       setError(t('event.invalidTimes'))
       return
     }
-    const clean = draft.allDay ? { ...draft, start: '00:00', end: '23:59' } : draft
+    const joinUrl = safeJoinUrl(draft.joinUrl)
+    if (draft.joinUrl?.trim() && !joinUrl) {
+      setError(t('event.invalidLink'))
+      return
+    }
+    const clean = { ...(draft.allDay ? { ...draft, start: '00:00', end: '23:59' } : draft), joinUrl }
     if (existing) updateEvent(existing.id, clean)
     else addEvent(clean)
     close()
@@ -63,7 +70,10 @@ export default function EventDialog() {
         }}
         className="flex flex-col gap-4"
       >
-        <h2 className="text-[16px] font-medium">{existing ? existing.title : t('event.new')}</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="min-w-0 truncate text-[16px] font-medium">{existing ? existing.title : t('event.new')}</h2>
+          {existing && <JoinLink event={existing} />}
+        </div>
         <Field label={t('event.title')}>
           <Input autoFocus value={draft.title} onChange={(e) => set({ title: e.target.value })} />
         </Field>
@@ -123,6 +133,9 @@ export default function EventDialog() {
             </Select>
           </Field>
         </div>
+        <Field label={t('event.meetingLink')} hint={t('event.meetingLinkHint')}>
+          <Input type="url" inputMode="url" placeholder="https://" value={draft.joinUrl ?? ''} onChange={(e) => set({ joinUrl: e.target.value })} />
+        </Field>
         {error && <p className="text-[12px] text-rose">{error}</p>}
         <div className="mt-2 flex items-center justify-between">
           {existing ? (

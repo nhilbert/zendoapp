@@ -39,6 +39,7 @@ To move an existing local connection instead, copy `data/msal-cache.json` into t
 - `showAs` → availability: `free` never blocks time; `tentative`, `busy`, `oof`, `workingElsewhere` block. All-day `free` entries (other people's holidays, reminders) are shown muted and ignored for capacity.
 - `isCancelled` → skipped. `isAllDay` → all-day event. `sensitivity` private/personal/confidential → private event (masked while private items are hidden).
 - Subject, location and online-meeting flag → kind heuristics (online, in person, workshop, coaching); you can override the kind and link a project, and these overrides survive every sync.
+- `onlineMeeting.joinUrl` (Teams), else a Teams/Zoom/Webex/Meet link in the location or `bodyPreview` → the event's Join button. The body preview is only scanned for that link, never stored.
 - Each sync replaces the previously synced events (moved and deleted meetings disappear; manual Zendo events and `.ics` imports are untouched). Range: last week to five weeks ahead.
 - Multi-day all-day events (holidays, trips) become one entry per day.
 

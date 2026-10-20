@@ -146,6 +146,8 @@ export interface CalendarEvent {
   /** Private appointment (Outlook sensitivity private/personal, or set by hand). Masked while "hide private" is on; still blocks time. */
   private?: boolean
   location?: string
+  /** online meeting link (Teams, Zoom …) behind the Join button; http(s) only, see domain/meeting.ts */
+  joinUrl?: string
   projectId?: string | null
   source: 'manual' | 'ics' | 'm365'
   /** external id (ICS UID) for de-duplication on re-import */

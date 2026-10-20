@@ -13,6 +13,8 @@ import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
 import { Button, Checkbox, Chip, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone } from '@/components/ui'
 import { ProjectChip, ProjectDot, TaskMeta, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
+import { JoinLink } from '@/components/JoinLink'
+import { joinUrlOf } from '@/domain/meeting'
 
 const SLOT = 30 // minutes
 const MIN_PX = 22 // minimum px per slot; the grid stretches to fill the viewport
@@ -413,29 +415,32 @@ function EventBlock({ event, top, h, px }: { event: VisibleEvent; top: number; h
   const projectMap = useProjectMap()
   const openEvent = useUi((s) => s.openEvent)
   const project = event.projectId && !event.masked ? projectMap.get(event.projectId) : null
+  const canJoin = !event.masked && !!joinUrlOf(event)
   return (
-    <button
-      type="button"
-      onClick={() => !event.masked && openEvent(event.id)}
+    <div
       style={{ top, height: h - 2, ...projectVars(project?.color ?? null) }}
       className={cx(
-        'pointer-events-auto absolute left-0 right-0 overflow-hidden rounded-md border-l-2 px-2 py-1 text-left',
+        'pointer-events-auto absolute left-0 right-0 overflow-hidden rounded-md border-l-2',
         isBlocking(event) ? 'bg-surface-2' : 'border-dashed bg-transparent opacity-70',
         project ? 'pc-line' : 'border-ink-3',
       )}
     >
-      <div className="flex items-center gap-1 truncate text-[12.5px] leading-tight text-ink">
-        {event.kind === 'online' ? <Video size={11} className="shrink-0 text-ink-3" /> : <MapPin size={11} className="shrink-0 text-ink-3" />}
-        <span className={cx('truncate', event.masked && 'italic text-ink-3')}>{event.title}</span>
-        {event.private && <Lock size={10} className="ml-1 shrink-0 text-ink-3" />}
-        {!isBlocking(event) && <span className="ml-1 shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
-      </div>
-      {h >= px * 1.5 && (
-        <div className="tnum mt-0.5 text-[11px] text-ink-3">
-          {fmtTime(event.start, locale)}–{fmtTime(event.end, locale)}
+      <button type="button" onClick={() => !event.masked && openEvent(event.id)} className={cx('h-full w-full px-2 py-1 text-left', canJoin && 'pr-[72px]')}>
+        <div className="flex items-center gap-1 truncate text-[12.5px] leading-tight text-ink">
+          {event.kind === 'online' ? <Video size={11} className="shrink-0 text-ink-3" /> : <MapPin size={11} className="shrink-0 text-ink-3" />}
+          <span className={cx('truncate', event.masked && 'italic text-ink-3')}>{event.title}</span>
+          {event.private && <Lock size={10} className="ml-1 shrink-0 text-ink-3" />}
+          {!isBlocking(event) && <span className="ml-1 shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
         </div>
-      )}
-    </button>
+        {h >= px * 1.5 && (
+          <div className="tnum mt-0.5 text-[11px] text-ink-3">
+            {fmtTime(event.start, locale)}–{fmtTime(event.end, locale)}
+          </div>
+        )}
+      </button>
+      {/* vertically centred like the block's text */}
+      <JoinLink event={event} className="absolute right-1 top-1/2 -translate-y-1/2" />
+    </div>
   )
 }
 
