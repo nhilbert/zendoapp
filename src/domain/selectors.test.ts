@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { CalendarEvent, Settings } from './types'
+import type { CalendarEvent, Settings, Task } from './types'
 import { DEFAULT_SETTINGS } from './types'
-import { dayCapacity } from './selectors'
+import { dayCapacity, leftoverTasks } from './selectors'
 import { nextOccurrence } from './dates'
 
 const settings: Settings = { ...DEFAULT_SETTINGS, workdayStart: '08:00', workdayEnd: '18:00', dayCapacityHours: 8 }
@@ -104,5 +104,20 @@ describe('anchored recurrence (no drift)', () => {
     const c = dayCapacity(DATE, { ...settings, workdayStart: '', budgetEnd: 'x' as never }, [ev({ start: '09:00', end: '10:00' })], [], [])
     expect(Number.isNaN(c.freeMinutes)).toBe(false)
     expect(c.workMinutes).toBe(600)
+  })
+})
+
+describe('leftoverTasks (rollover)', () => {
+  const task = (p: Partial<Task>): Task => ({ id: p.id ?? 'x', title: 't', projectId: null, status: 'todo', priority: 'normal', notes: [], order: 0, createdAt: '', updatedAt: '', ...p })
+  it('offers open tasks planned for earlier days, oldest plan first', () => {
+    const tasks = [
+      task({ id: 'yesterday', plannedDate: '2026-10-19' }),
+      task({ id: 'older', plannedDate: '2026-10-16' }),
+      task({ id: 'today', plannedDate: '2026-10-20' }),
+      task({ id: 'done', plannedDate: '2026-10-19', status: 'done' }),
+      task({ id: 'someday', plannedDate: '2026-10-19', status: 'someday' }),
+      task({ id: 'unplanned' }),
+    ]
+    expect(leftoverTasks(tasks, '2026-10-20').map((t) => t.id)).toEqual(['older', 'yesterday'])
   })
 })

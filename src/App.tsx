@@ -9,6 +9,7 @@ import ProjectPage from './pages/ProjectPage'
 import BoardPage from './pages/BoardPage'
 import ReviewPage from './pages/ReviewPage'
 import SettingsPage from './pages/SettingsPage'
+import FocusPage from './pages/FocusPage'
 
 const router = createBrowserRouter([
   {
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
       { path: 'board', element: <BoardPage /> },
       { path: 'review', element: <ReviewPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'focus/:id', element: <FocusPage /> },
       { path: '*', element: <Navigate to="/today" replace /> },
     ],
   },

@@ -242,7 +242,12 @@
     "now": "now",
     "nextAction": "next",
     "viewList": "List",
-    "viewTimeline": "Timeline"
+    "viewTimeline": "Timeline",
+    "leftover": "Left over from earlier days",
+    "toToday": "Plan for today",
+    "unplan": "Not today – back to the list",
+    "allToToday": "All for today",
+    "allBack": "All back to the lists"
   },
   "week": {
     "title": "Week",
@@ -265,7 +270,19 @@
     "blockIncludes": "includes {{hours}} of this project’s meetings",
     "addBlock": "Add a ½-day block…",
     "block": "Block",
-    "subtitlePhone": "Rough plan for the next two weeks. Tap “Block” on a day to plan a project."
+    "subtitlePhone": "Rough plan for the next two weeks. Tap “Block” on a day to plan a project.",
+    "propose": "Propose",
+    "proposeTitle": "Let AI propose blocks for the free time of these two weeks",
+    "proposing": "Planning the free time of these two weeks with AI … this can take a minute.",
+    "proposalTitle_one": "Proposal: {{count}} block",
+    "proposalTitle_other": "Proposal: {{count}} blocks",
+    "proposalNone": "No additional blocks proposed.",
+    "proposalHint": "Dashed blocks are suggestions. Remove single ones with ×; nothing changes until you apply.",
+    "proposalDropped_one": "{{count}} suggestion did not fit the free time and was left out.",
+    "proposalDropped_other": "{{count}} suggestions did not fit the free time and were left out.",
+    "applyProposal": "Apply",
+    "discardProposal": "Discard",
+    "proposalError": "No proposal: {{message}}"
   },
   "event": {
     "new": "New meeting",
@@ -366,7 +383,7 @@
     "importDone": "Data imported.",
     "importInvalid": "This file is not a Zendo export. Nothing was changed.",
     "m365NotConfigured": "Microsoft 365 is not configured: add MS_CLIENT_ID and MS_TENANT_ID to .env (see docs/outlook-setup.md) and restart.",
-    "aiServer": "The Zendo server uses {{provider}} · {{model}} with the key stored there. Inbox text and project names are sent to the provider when you press Auto.",
+    "aiServer": "The Zendo server uses {{provider}} · {{model}} with the key stored there. Auto in Clarify sends the inbox text and project names; Propose in Week sends project names, headline goals, due dates, open-work figures and free hours per day – no task or meeting titles.",
     "aiServerMissing": "No AI key on the Zendo server. Add ANTHROPIC_API_KEY (or OPENAI_API_KEY) to its settings and restart Zendo; the key stays on the server and never reaches the browser.",
     "aiBrowserFallback": "Fallback: key stored in this browser",
     "aiRemoveBrowserKey": "Remove the key stored in this browser (no longer needed)"
@@ -424,5 +441,24 @@
     "keepBrowser": "Keep this browser’s data and replace the server",
     "keepServer": "Use the server’s data and replace this browser",
     "downloadBackup": "Download the copy taken before the first sync"
+  },
+  "focus": {
+    "label": "Focus",
+    "start": "Focus",
+    "startTitle": "Focus on this project – everything else is hidden",
+    "exit": "End focus",
+    "next": "Next action",
+    "noNext": "No next action yet. What is the next concrete step?",
+    "addNext": "Next action …",
+    "then": "Then",
+    "showAll": "Show all ({{count}})",
+    "waiting": "Waiting for",
+    "doneToday": "Done today",
+    "addTask": "Add a task to this project …",
+    "notes": "Project notes",
+    "hint": "n parks a thought in the inbox · Esc ends focus",
+    "dayBlocked": "{{size}} day blocked today ({{hours}})",
+    "notBlocked": "Not blocked in today's week plan.",
+    "unavailable": "This project is archived or no longer exists."
   }
 }

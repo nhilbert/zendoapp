@@ -242,7 +242,12 @@
     "now": "jetzt",
     "nextAction": "nächster",
     "viewList": "Liste",
-    "viewTimeline": "Zeitplan"
+    "viewTimeline": "Zeitplan",
+    "leftover": "Liegengeblieben",
+    "toToday": "Für heute einplanen",
+    "unplan": "Nicht heute – zurück in die Liste",
+    "allToToday": "Alle für heute",
+    "allBack": "Alle zurück in die Listen"
   },
   "week": {
     "title": "Woche",
@@ -265,7 +270,19 @@
     "blockIncludes": "enthält {{hours}} Termine dieses Projekts",
     "addBlock": "½-Tag-Block hinzufügen…",
     "block": "Block",
-    "subtitlePhone": "Grobplan für die nächsten zwei Wochen. Tippe bei einem Tag auf „Block“, um ein Projekt einzuplanen."
+    "subtitlePhone": "Grobplan für die nächsten zwei Wochen. Tippe bei einem Tag auf „Block“, um ein Projekt einzuplanen.",
+    "propose": "Vorschlagen",
+    "proposeTitle": "KI schlägt Blöcke für die freie Zeit dieser zwei Wochen vor",
+    "proposing": "Plane die freie Zeit dieser zwei Wochen mit KI … das kann eine Minute dauern.",
+    "proposalTitle_one": "Vorschlag: {{count}} Block",
+    "proposalTitle_other": "Vorschlag: {{count}} Blöcke",
+    "proposalNone": "Keine weiteren Blöcke vorgeschlagen.",
+    "proposalHint": "Gestrichelte Blöcke sind Vorschläge. Einzelne mit × entfernen; erst beim Übernehmen ändert sich etwas.",
+    "proposalDropped_one": "{{count}} Vorschlag passte nicht in die freie Zeit und wurde weggelassen.",
+    "proposalDropped_other": "{{count}} Vorschläge passten nicht in die freie Zeit und wurden weggelassen.",
+    "applyProposal": "Übernehmen",
+    "discardProposal": "Verwerfen",
+    "proposalError": "Kein Vorschlag: {{message}}"
   },
   "event": {
     "new": "Neuer Termin",
@@ -366,7 +383,7 @@
     "importDone": "Daten importiert.",
     "importInvalid": "Diese Datei ist kein Zendo-Export. Es wurde nichts geändert.",
     "m365NotConfigured": "Microsoft 365 ist nicht konfiguriert: MS_CLIENT_ID und MS_TENANT_ID in .env eintragen (siehe docs/outlook-setup.md) und neu starten.",
-    "aiServer": "Der Zendo-Server nutzt {{provider}} · {{model}} mit dem dort hinterlegten Schlüssel. Bei „Auto“ werden Eingangstext und Projektnamen an den Anbieter gesendet.",
+    "aiServer": "Der Zendo-Server nutzt {{provider}} · {{model}} mit dem dort hinterlegten Schlüssel. „Auto“ beim Klären sendet den Eingangstext und die Projektnamen; „Vorschlagen“ in der Woche sendet Projektnamen, Hauptziele, Fälligkeiten, Zahlen zur offenen Arbeit und freie Stunden pro Tag – keine Aufgaben- oder Termintitel.",
     "aiServerMissing": "Kein KI-Schlüssel auf dem Zendo-Server. ANTHROPIC_API_KEY (oder OPENAI_API_KEY) in seinen Einstellungen eintragen und Zendo neu starten; der Schlüssel bleibt auf dem Server und erreicht nie den Browser.",
     "aiBrowserFallback": "Fallback: Schlüssel in diesem Browser",
     "aiRemoveBrowserKey": "Im Browser gespeicherten Schlüssel entfernen (nicht mehr nötig)"
@@ -424,5 +441,24 @@
     "keepBrowser": "Daten dieses Browsers behalten und den Server ersetzen",
     "keepServer": "Daten des Servers übernehmen und diesen Browser ersetzen",
     "downloadBackup": "Kopie von vor der ersten Synchronisierung herunterladen"
+  },
+  "focus": {
+    "label": "Fokus",
+    "start": "Fokus",
+    "startTitle": "Auf dieses Projekt fokussieren – alles andere wird ausgeblendet",
+    "exit": "Fokus beenden",
+    "next": "Nächste Aktion",
+    "noNext": "Noch keine nächste Aktion. Was ist der nächste konkrete Schritt?",
+    "addNext": "Nächste Aktion …",
+    "then": "Danach",
+    "showAll": "Alle zeigen ({{count}})",
+    "waiting": "Wartet auf",
+    "doneToday": "Heute erledigt",
+    "addTask": "Aufgabe zu diesem Projekt hinzufügen …",
+    "notes": "Projektnotizen",
+    "hint": "n parkt einen Gedanken im Eingang · Esc beendet den Fokus",
+    "dayBlocked": "Heute {{size}} Tag geblockt ({{hours}})",
+    "notBlocked": "Im heutigen Wochenplan nicht geblockt.",
+    "unavailable": "Dieses Projekt ist archiviert oder existiert nicht mehr."
   }
 }

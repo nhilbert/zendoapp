@@ -69,13 +69,18 @@ export function buildClarifyPrompt(input: ClarifyInput): string {
   ].join('\n')
 }
 
-/** Tolerant parser: accepts fenced or embedded JSON and drops anything that does not fit. */
-export function parseClarifySuggestion(raw: string): ClarifySuggestion {
+/** The JSON object in a model answer; tolerates code fences and text around it. */
+export function extractJsonObject(raw: string): Record<string, unknown> {
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   const start = cleaned.indexOf('{')
   const end = cleaned.lastIndexOf('}')
   if (start < 0 || end <= start) throw new Error('ai_bad_response')
-  const json = JSON.parse(cleaned.slice(start, end + 1)) as Partial<Record<keyof ClarifySuggestion, unknown>>
+  return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>
+}
+
+/** Tolerant parser: accepts fenced or embedded JSON and drops anything that does not fit. */
+export function parseClarifySuggestion(raw: string): ClarifySuggestion {
+  const json = extractJsonObject(raw) as Partial<Record<keyof ClarifySuggestion, unknown>>
   const kinds = ['task', 'project', 'meeting', 'someday', 'trash'] as const
   const kind = kinds.includes(json.kind as (typeof kinds)[number]) ? (json.kind as ClarifySuggestion['kind']) : 'task'
   const priorities: Priority[] = ['high', 'normal', 'low']

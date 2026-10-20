@@ -70,6 +70,8 @@ interface State {
   completeTask: (id: string, done?: boolean) => void
   addTaskNote: (id: string, text: string) => void
   scheduleTask: (id: string, date: ISODate | undefined, start?: string) => void
+  /** Rollover: plan several tasks for a day (time of day dropped), or take them off the plan (date undefined). */
+  rescheduleTasks: (ids: string[], date: ISODate | undefined) => void
 
   // events
   addEvent: (input: Omit<CalendarEvent, 'id' | 'source'> & { source?: CalendarEvent['source'] }) => CalendarEvent
@@ -79,7 +81,7 @@ interface State {
   importEvents: (events: CalendarEvent[], source: 'ics' | 'm365') => { total: number; kept: number; removed: number }
 
   // plan blocks
-  addBlock: (date: ISODate, projectId: string | null, size?: BlockSize) => PlanBlock
+  addBlock: (date: ISODate, projectId: string | null, size?: BlockSize, note?: string) => PlanBlock
   updateBlock: (id: string, patch: Partial<PlanBlock>) => void
   removeBlock: (id: string) => void
 
@@ -295,6 +297,11 @@ export const useStore = create<State>()(
             t.id === id ? { ...t, plannedDate: date, plannedStart: date ? start : undefined, updatedAt: now() } : t,
           ),
         })),
+      rescheduleTasks: (ids, date) =>
+        set((s) => {
+          const set_ = new Set(ids)
+          return { tasks: s.tasks.map((t) => (set_.has(t.id) ? { ...t, plannedDate: date, plannedStart: undefined, updatedAt: now() } : t)) }
+        }),
 
       addEvent: (input) => {
         const event: CalendarEvent = { id: uid(), source: 'manual', ...input }
@@ -322,8 +329,8 @@ export const useStore = create<State>()(
         return { total: incoming.length, kept, removed }
       },
 
-      addBlock: (date, projectId, size = 0.5) => {
-        const block: PlanBlock = { id: uid(), date, projectId, size }
+      addBlock: (date, projectId, size = 0.5, note) => {
+        const block: PlanBlock = { id: uid(), date, projectId, size, ...(note?.trim() ? { note: note.trim() } : {}) }
         set((s) => ({ blocks: [...s.blocks, block] }))
         return block
       },

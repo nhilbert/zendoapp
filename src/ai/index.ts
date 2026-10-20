@@ -1,9 +1,11 @@
 import type { Locale, ISODate } from '@/domain/types'
 import { NotConfigured, api } from '@/sync/api'
 import type { ClarifySuggestion } from './clarify'
+import type { WeekProposal } from './week'
 import { aiEnabled, loadAiSettings } from './settings'
 
 export type { ClarifySuggestion } from './clarify'
+export type { ProposedBlock, WeekProposal } from './week'
 export * from './settings'
 
 export interface AiServerStatus {
@@ -36,3 +38,10 @@ export async function suggestClarification(input: { text: string; projects: stri
     return suggestFromBrowser(input, settings)
   }
 }
+
+/**
+ * Week proposal: the server reads projects, deadlines, calendar and blocks from the database and returns
+ * additional blocks that fit into the free time. Needs the server's AI key (no browser fallback).
+ */
+export const proposeWeek = (input: { start: ISODate; days: number; today: ISODate; now: string; locale: Locale; includePrivate: boolean }) =>
+  api<WeekProposal>('/api/ai/week', { method: 'POST', body: JSON.stringify(input), timeoutMs: 240_000 })

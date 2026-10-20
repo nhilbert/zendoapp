@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
-import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Video } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Target, Video, X } from 'lucide-react'
 import { BLOCK_SIZE_LABEL, type ISODate, type PlanBlock, type Task } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
 import { addDaysISO, addMinutes, durationMinutes, fmtDate, fmtHours, fmtTime, hhmmToMinutes, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
-import { type DayCapacity, blocksOn, candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, projectsWithoutNextAction, safeTimes, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
+import { type DayCapacity, blocksOn, candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, leftoverTasks, projectsWithoutNextAction, safeTimes, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
@@ -47,7 +47,17 @@ export default function TodayPage() {
   const timed = planned.filter((x) => x.plannedStart).sort(sortByTime)
   const untimed = planned.filter((x) => !x.plannedStart)
   const cap = dayCapacity(date, settings, events, blocks, tasks)
-  const cands = candidatesForDay(date, tasks, blocks, projects)
+  // Rollover: on today, unfinished tasks from earlier days are offered once (and not repeated among the candidates).
+  const leftovers = date === today ? leftoverTasks(tasks, today) : []
+  const leftoverIds = new Set(leftovers.map((x) => x.id))
+  const rawCands = candidatesForDay(date, tasks, blocks, projects)
+  const notLeftover = (x: Task) => !leftoverIds.has(x.id)
+  const cands = {
+    overdue: rawCands.overdue.filter(notLeftover),
+    due: rawCands.due.filter(notLeftover),
+    fromBlocks: rawCands.fromBlocks.filter((b) => !b.task || notLeftover(b.task)),
+    chores: rawCands.chores.filter(notLeftover),
+  }
   const missingNext = projectsWithoutNextAction(projects, tasks)
   const dayReview = reviews.find((r) => r.kind === 'daily' && r.date === date)
   const [notes, setNotes] = useState(dayReview?.notes ?? '')
@@ -205,6 +215,8 @@ export default function TodayPage() {
 
           {/* Plan & candidates */}
           <aside className={cx('min-h-0 flex-col gap-8 pb-4 md:flex md:overflow-y-auto md:pr-1', phoneView === 'plan' ? 'flex' : 'hidden')}>
+            <Leftovers tasks={leftovers} today={today} />
+
             <DayBlocks blocks={blocksOn(blocks, date)} cap={cap} dayCapacityHours={settings.dayCapacityHours} />
 
             <div>
@@ -289,6 +301,54 @@ export default function TodayPage() {
   )
 }
 
+/** Rollover: tasks planned for earlier days and not done – into today, back to the lists, or ticked off. */
+function Leftovers({ tasks, today }: { tasks: Task[]; today: ISODate }) {
+  const { t } = useTranslation()
+  const locale = useLocale()
+  const projectMap = useProjectMap()
+  const openTask = useUi((s) => s.openTask)
+  const completeTask = useStore((s) => s.completeTask)
+  const rescheduleTasks = useStore((s) => s.rescheduleTasks)
+  if (tasks.length === 0) return null
+  const ids = tasks.map((x) => x.id)
+  return (
+    <div>
+      <SectionLabel>{t('today.leftover')}</SectionLabel>
+      <ul className="flex flex-col">
+        {tasks.map((task) => {
+          const project = task.projectId ? projectMap.get(task.projectId) : null
+          return (
+            <li key={task.id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-2">
+              <Checkbox checked={false} onChange={(v) => completeTask(task.id, v)} className="shrink-0" />
+              <button type="button" onClick={() => openTask(task.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-[13px]">
+                <ProjectDot color={project?.color ?? null} size={6} />
+                <span className="truncate">{task.title}</span>
+                <span className="tnum shrink-0 text-[11px] text-ink-3">{fmtDate(task.plannedDate!, locale, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+              </button>
+              <IconButton label={t('today.toToday')} onClick={() => rescheduleTasks([task.id], today)}>
+                <Plus size={14} />
+              </IconButton>
+              <IconButton label={t('today.unplan')} onClick={() => rescheduleTasks([task.id], undefined)}>
+                <X size={14} />
+              </IconButton>
+            </li>
+          )
+        })}
+      </ul>
+      {tasks.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-2 px-1">
+          <Button size="sm" onClick={() => rescheduleTasks(ids, today)}>
+            {t('today.allToToday')}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => rescheduleTasks(ids, undefined)}>
+            {t('today.allBack')}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** The day's blocks from the week plan: which projects (or chores) the day is reserved for, and how much. */
 function DayBlocks({ blocks, cap, dayCapacityHours }: { blocks: PlanBlock[]; cap: DayCapacity; dayCapacityHours: number }) {
   const { t } = useTranslation()
@@ -326,6 +386,11 @@ function DayBlocks({ blocks, cap, dayCapacityHours }: { blocks: PlanBlock[]; cap
                   <span className="tnum shrink-0 text-[12px] text-ink-2">
                     {BLOCK_SIZE_LABEL[b.size]} · {fmtHours(minutes, locale)}
                   </span>
+                  {project && (
+                    <Link to={`/focus/${project.id}`} state={{ from: '/today' }} title={t('focus.startTitle')} aria-label={t('focus.start')} className="pc-text -mr-1 shrink-0 rounded p-0.5 opacity-70 hover:opacity-100">
+                      <Target size={14} />
+                    </Link>
+                  )}
                 </div>
                 {(b.note || (info && info.meetingMinutes > 0)) && (
                   <div className="mt-0.5 pl-[15px] text-[12px] leading-snug text-ink-3">

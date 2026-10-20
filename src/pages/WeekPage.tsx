@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
-import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Video, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Sparkles, Video, X } from 'lucide-react'
 import type { ISODate, PlanBlock, Project } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
 import { BLOCK_SIZES, BLOCK_SIZE_LABEL } from '@/domain/types'
-import { addDaysISO, fmtDate, fmtHours, fmtTime, fmtWeekday, isoWeekNumber, rangeISO, startOfWeekISO, todayISO } from '@/domain/dates'
+import { addDaysISO, fmtDate, fmtHours, fmtTime, fmtWeekday, isoWeekNumber, nowHHMM, rangeISO, startOfWeekISO, todayISO } from '@/domain/dates'
 import { blocksOn, dayCapacity, eventsOn, isBlocking, tasksDueOn } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
@@ -14,8 +14,14 @@ import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
 import { Button, IconButton, PageHeader, cx, useIsPhone } from '@/components/ui'
 import { ProjectDot, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
+import type { ProposedBlock } from '@/ai/week'
+import { aiErrorText } from '@/ai/errors'
+import { NotConfigured } from '@/sync/api'
 
 const CHORES = 'chores'
+
+type Proposed = ProposedBlock & { key: string }
+type ProposalState = { status: 'loading' } | { status: 'ready'; summary: string; blocks: Proposed[]; dropped: number } | { status: 'error'; message: string }
 
 export default function WeekPage() {
   const { t } = useTranslation()
@@ -34,6 +40,34 @@ export default function WeekPage() {
   const sensors = useDndSensors()
   const activeProjects = projects.filter((p) => p.status === 'active')
   const isPhone = useIsPhone()
+  const appLocale = useStore((s) => s.settings.locale)
+  const hidePrivate = useStore((s) => !!s.settings.hidePrivate)
+
+  // AI proposal for the visible two weeks: shown as dashed blocks until applied or discarded.
+  const [proposal, setProposal] = useState<ProposalState | null>(null)
+  const request = useRef(0)
+  useEffect(() => {
+    request.current += 1 // a proposal belongs to the visible range; a late answer for another range is ignored
+    setProposal(null)
+  }, [offset])
+  const propose = async () => {
+    const mine = ++request.current
+    setProposal({ status: 'loading' })
+    try {
+      const { proposeWeek } = await import('@/ai')
+      const r = await proposeWeek({ start, days: 14, today, now: nowHHMM(), locale: appLocale, includePrivate: !hidePrivate })
+      if (mine === request.current) setProposal({ status: 'ready', summary: r.summary, dropped: r.dropped, blocks: r.blocks.map((b, i) => ({ ...b, key: String(i) })) })
+    } catch (err) {
+      if (mine === request.current) setProposal({ status: 'error', message: err instanceof NotConfigured ? t('clarify.ai.noKey') : t('week.proposalError', { message: aiErrorText(err, t) }) })
+    }
+  }
+  const proposedOn = (date: ISODate) => (proposal?.status === 'ready' ? proposal.blocks.filter((b) => b.date === date) : [])
+  const dropProposed = (key: string) => setProposal((p) => (p?.status === 'ready' ? { ...p, blocks: p.blocks.filter((b) => b.key !== key) } : p))
+  const applyProposal = () => {
+    if (proposal?.status !== 'ready') return
+    for (const b of proposal.blocks) addBlock(b.date, b.projectId, b.size, b.note ?? undefined)
+    setProposal(null)
+  }
 
   const onDragStart = (e: DragStartEvent) => {
     const id = String(e.active.id)
@@ -63,6 +97,9 @@ export default function WeekPage() {
         subtitle={isPhone ? t('week.subtitlePhone') : t('week.subtitle')}
         right={
           <>
+            <Button variant="ghost" size="sm" onClick={() => void propose()} disabled={proposal?.status === 'loading'} title={t('week.proposeTitle')}>
+              <Sparkles size={14} className="text-accent" /> {t('week.propose')}
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => setOffset(0)} disabled={offset === 0}>
               {t('week.thisWeek')}
             </Button>
@@ -75,6 +112,36 @@ export default function WeekPage() {
           </>
         }
       />
+
+      {proposal && (
+        <div className="card mb-6 flex flex-col gap-3 px-4 py-3 md:flex-row md:items-start">
+          <Sparkles size={15} className="mt-0.5 hidden shrink-0 text-accent md:block" />
+          <div className="min-w-0 flex-1 text-[13px]">
+            {proposal.status === 'loading' && <p className="text-ink-2">{t('week.proposing')}</p>}
+            {proposal.status === 'error' && <p className="text-rose">{proposal.message}</p>}
+            {proposal.status === 'ready' && (
+              <>
+                <div className="font-medium text-ink">{proposal.blocks.length ? t('week.proposalTitle', { count: proposal.blocks.length }) : t('week.proposalNone')}</div>
+                {proposal.summary && <p className="mt-1 leading-relaxed text-ink-2">{proposal.summary}</p>}
+                {proposal.dropped > 0 && <p className="mt-1 text-[12px] text-ink-3">{t('week.proposalDropped', { count: proposal.dropped })}</p>}
+                {proposal.blocks.length > 0 && <p className="mt-1 text-[12px] text-ink-3">{t('week.proposalHint')}</p>}
+              </>
+            )}
+          </div>
+          {proposal.status !== 'loading' && (
+            <div className="flex shrink-0 gap-2">
+              {proposal.status === 'ready' && proposal.blocks.length > 0 && (
+                <Button size="sm" variant="primary" onClick={applyProposal}>
+                  {t('week.applyProposal')}
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => setProposal(null)}>
+                {t('week.discardProposal')}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         {/* Drag palette: desktop only – on phones each day has a "Block" picker instead. */}
@@ -96,7 +163,7 @@ export default function WeekPage() {
               <h2 className="mb-3 text-[13px] font-medium text-ink-2">{weekTitle(days)}</h2>
               <div className="card divide-y divide-line overflow-hidden">
                 {days.map((date) => (
-                  <DayRow key={date} date={date} today={today} />
+                  <DayRow key={date} date={date} today={today} proposed={proposedOn(date)} onDropProposed={dropProposed} />
                 ))}
               </div>
             </section>
@@ -188,7 +255,7 @@ function BlockChip({
   )
 }
 
-function DayRow({ date, today }: { date: ISODate; today: ISODate }) {
+function DayRow({ date, today, proposed, onDropProposed }: { date: ISODate; today: ISODate; proposed: Proposed[]; onDropProposed: (key: string) => void }) {
   const { t } = useTranslation()
   const locale = useLocale()
   const projects = useVisibleProjects()
@@ -293,10 +360,35 @@ function DayRow({ date, today }: { date: ISODate; today: ISODate }) {
                 <BlockChip block={b} project={b.projectId ? (projectMap.get(b.projectId) ?? null) : null} onCycle={() => cycleSize(b)} onRemove={() => removeBlock(b.id)} absorbed={capOf(b.id)} />
               </Draggable>
             ))}
+            {proposed.map((b) => (
+              <ProposedChip key={b.key} block={b} project={b.projectId ? (projectMap.get(b.projectId) ?? null) : null} onRemove={() => onDropProposed(b.key)} />
+            ))}
           </div>
         )}
       </div>
     </Droppable>
+  )
+}
+
+/** An AI-proposed block: dashed until applied; the reason shows on hover, the note inline. */
+function ProposedChip({ block, project, onRemove }: { block: ProposedBlock; project: Project | null; onRemove: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <span
+      style={projectVars(project?.color ?? null)}
+      title={[block.note, block.reason].filter(Boolean).join(' – ')}
+      className="pc-line inline-flex h-6 max-w-full select-none items-center gap-1.5 rounded-full border border-dashed pl-2.5 pr-1 text-[12px] text-ink-2"
+    >
+      <ProjectDot color={project?.color ?? null} size={6} />
+      <span className="truncate">
+        {project ? project.name : t('week.chores')}
+        {block.note && <span className="text-ink-3"> · {block.note}</span>}
+      </span>
+      <span className="tnum px-1 font-medium">{BLOCK_SIZE_LABEL[block.size]}</span>
+      <button type="button" onClick={onRemove} className="rounded-full p-0.5 text-ink-3 hover:text-ink" aria-label={t('common.remove')}>
+        <X size={11} />
+      </button>
+    </span>
   )
 }
 

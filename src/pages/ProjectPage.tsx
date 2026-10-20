@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, Plus, Target, X } from 'lucide-react'
 import type { ProjectStatus, Task } from '@/domain/types'
 import { PROJECT_COLORS } from '@/domain/types'
 import { addDaysISO, fmtDate, fmtWeekday, startOfWeekISO, todayISO } from '@/domain/dates'
@@ -86,6 +86,11 @@ export default function ProjectPage() {
           onChange={(e) => updateProject(project.id, { name: e.target.value })}
           className="field-bare -ml-2 w-full px-2 py-1 text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]"
         />
+        {!archived && (
+          <Button variant="ghost" size="sm" className="mt-2 shrink-0" title={t('focus.startTitle')} onClick={() => navigate(`/focus/${project.id}`, { state: { from: `/projects/${project.id}` } })}>
+            <Target size={14} className="pc-text" /> {t('focus.start')}
+          </Button>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px]">

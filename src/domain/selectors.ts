@@ -56,6 +56,16 @@ export function tasksPlannedOn(tasks: Task[], date: ISODate): Task[] {
   return tasks.filter((t) => t.plannedDate === date)
 }
 
+/**
+ * Rollover: open tasks that were planned for an earlier day and not done (someday ones excluded),
+ * oldest plan first. Today offers them again; nothing moves without the user's decision.
+ */
+export function leftoverTasks(tasks: Task[], today: ISODate): Task[] {
+  return tasks
+    .filter((t) => isOpen(t) && t.status !== 'someday' && !!t.plannedDate && compareISO(t.plannedDate, today) < 0)
+    .sort((a, b) => compareISO(a.plannedDate!, b.plannedDate!) || sortTasks(a, b))
+}
+
 export function tasksDueOn(tasks: Task[], date: ISODate): Task[] {
   return tasks.filter((t) => t.dueDate === date)
 }

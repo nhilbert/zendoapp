@@ -11,6 +11,7 @@ import { useStore } from '@/store/useStore'
 import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { Button, Checkbox, Empty, Field, Input, Segmented, Select, Textarea, cx } from '@/components/ui'
 import { fmtEstimate } from '@/components/TaskBits'
+import { aiErrorText } from '@/ai/errors'
 
 /**
  * Clarify – two steps, one item at a time.
@@ -21,15 +22,6 @@ type Kind = 'task' | 'project' | 'meeting' | 'someday' | 'didIt' | 'trash'
 const TILES: Kind[] = ['task', 'project', 'meeting', 'someday', 'didIt']
 const ESTIMATES = [15, 30, 60, 120, 240, 480] as const
 const NEW = '__new__'
-
-function aiErrorText(err: unknown, t: (k: 'clarify.ai.errAuth' | 'clarify.ai.errRate' | 'clarify.ai.errRefused' | 'clarify.ai.errServer') => string): string {
-  const m = err instanceof Error ? err.message : String(err)
-  if (m === 'ai_auth') return t('clarify.ai.errAuth')
-  if (m === 'ai_rate_limited') return t('clarify.ai.errRate')
-  if (m === 'ai_refused') return t('clarify.ai.errRefused')
-  if (m === 'service_unavailable') return t('clarify.ai.errServer')
-  return m
-}
 
 export default function ClarifyPage() {
   const { t, i18n } = useTranslation()

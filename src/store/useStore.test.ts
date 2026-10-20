@@ -178,3 +178,23 @@ describe('JSON import', () => {
     expect(useStore.getState().projects).toHaveLength(1)
   })
 })
+
+describe('rollover and blocks', () => {
+  it('plans several tasks for a day without their time, or takes them off the plan', () => {
+    const s = useStore.getState()
+    const a = s.addTask({ title: 'a', plannedDate: '2026-10-19', plannedStart: '09:00' })
+    const b = s.addTask({ title: 'b', plannedDate: '2026-10-16' })
+    s.rescheduleTasks([a.id, b.id], '2026-10-20')
+    const byId = () => new Map(useStore.getState().tasks.map((t) => [t.id, t]))
+    expect(byId().get(a.id)).toMatchObject({ plannedDate: '2026-10-20', plannedStart: undefined })
+    expect(byId().get(b.id)?.plannedDate).toBe('2026-10-20')
+    s.rescheduleTasks([a.id], undefined)
+    expect(byId().get(a.id)?.plannedDate).toBeUndefined()
+    expect(byId().get(b.id)?.plannedDate).toBe('2026-10-20')
+  })
+  it('keeps a note on a new block (applied week proposal)', () => {
+    const s = useStore.getState()
+    expect(s.addBlock('2026-10-21', null, 0.25, '  invoices  ').note).toBe('invoices')
+    expect('note' in s.addBlock('2026-10-21', null, 0.25, ' ')).toBe(false)
+  })
+})
