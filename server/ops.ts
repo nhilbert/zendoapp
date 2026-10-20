@@ -18,7 +18,7 @@ import type {
   TaskStatus,
 } from '../src/domain/types.ts'
 import { BLOCK_SIZES, DEFAULT_SETTINGS } from '../src/domain/types.ts'
-import { addDaysISO, fmtWeekday, isISODate, isoWeekday, nowHHMM, rangeISO, todayISO } from '../src/domain/dates.ts'
+import { addDaysISO, fmtWeekday, isHHMM, isISODate, isoWeekday, nowHHMM, rangeISO, todayISO } from '../src/domain/dates.ts'
 import {
   blocksOn,
   candidatesForDay,
@@ -53,6 +53,8 @@ interface Data {
   blocks: PlanBlock[]
   reviews: Review[]
   settings: Settings
+  /** With hidePrivate: what the agent may not see, still needed so the rules hold across all records. */
+  hidden: { projects: Project[]; tasks: Task[] }
 }
 type Writable = 'inbox' | 'projects' | 'tasks' | 'blocks' | 'reviews'
 const WRITABLE: Writable[] = ['inbox', 'projects', 'tasks', 'blocks', 'reviews']
@@ -138,14 +140,17 @@ export class Ops {
       blocks: s.blocks as unknown as PlanBlock[],
       reviews: s.reviews as unknown as Review[],
       settings: { ...DEFAULT_SETTINGS, ...(s.settings ?? {}) },
+      hidden: { projects: [], tasks: [] },
     }
     if (!this.hidePrivate) return data
-    // Hidden records never enter `before`, so a write can neither change nor delete them.
+    // Hidden records never enter `before`, so a write can neither change nor delete them (except the next-action rule, see write).
     const hidden = new Set(data.projects.filter((p) => p.private).map((p) => p.id))
+    const hiddenTask = (t: Task) => !!t.private || (!!t.projectId && hidden.has(t.projectId))
     return {
       ...data,
       projects: data.projects.filter((p) => !p.private),
-      tasks: data.tasks.filter((t) => !t.private && !(t.projectId && hidden.has(t.projectId))),
+      tasks: data.tasks.filter((t) => !hiddenTask(t)),
+      hidden: { projects: data.projects.filter((p) => p.private), tasks: data.tasks.filter(hiddenTask) },
       blocks: data.blocks.filter((b) => !(b.projectId && hidden.has(b.projectId))),
       events: data.events.map((e) => (e.private ? { ...e, title: 'private', location: undefined, joinUrl: undefined } : e)),
     }
@@ -162,6 +167,11 @@ export class Ops {
       const ups = next.filter((r) => prev.get(r.id) !== r)
       const keep = new Set(next.map((r) => r.id))
       const dels = [...prev.keys()].filter((id) => !keep.has(id))
+      if (col === 'tasks') {
+        // One next action per project also against private tasks the agent cannot see: demote them.
+        const promoted = new Set((ups as unknown as Task[]).filter((t) => t.status === 'next' && t.projectId).map((t) => t.projectId))
+        for (const t of before.hidden.tasks) if (t.status === 'next' && promoted.has(t.projectId)) ups.push({ ...t, status: 'todo', updatedAt: stamp() } as unknown as Record_)
+      }
       if (ups.length) upserts[col] = ups
       if (dels.length) deletes[col] = dels
     }
@@ -170,17 +180,29 @@ export class Ops {
 
   // ---------- lookups and views ----------
 
-  /** A project by id, or by name (exact, case-insensitive; else a unique partial match). */
+  /** A project by id, or by name (exact, case-insensitive, current before archived; else a unique partial match). */
   private project(d: Data, ref: string): Project {
     const byId = d.projects.find((p) => p.id === ref)
     if (byId) return byId
     const q = ref.trim().toLowerCase()
     const exact = d.projects.filter((p) => p.name.toLowerCase() === q)
     if (exact.length === 1) return exact[0]
+    const current = exact.filter((p) => p.status !== 'archived')
+    if (current.length === 1) return current[0]
     const partial = exact.length ? exact : d.projects.filter((p) => p.name.toLowerCase().includes(q))
     if (partial.length === 1) return partial[0]
     if (!partial.length) throw new BadRequest(`no project matches "${ref}"`)
     throw new BadRequest(`"${ref}" matches several projects: ${partial.map((p) => `${p.name} (${p.id})`).join(', ')}`)
+  }
+
+  /** A current (not archived) project with this name, also among hidden ones, so names stay unique in the app. */
+  private nameTaken(d: Data, name: string, except?: string): boolean {
+    const n = name.trim().toLowerCase()
+    return [...d.projects, ...d.hidden.projects].some((p) => p.id !== except && p.status !== 'archived' && p.name.toLowerCase() === n)
+  }
+
+  private assertWorkable(d: Data, projectId: string | null): void {
+    if (projectId && d.projects.find((p) => p.id === projectId)?.status === 'archived') throw new BadRequest('the project is archived; reactivate it first')
   }
 
   private task(d: Data, id: string): Task {
@@ -319,7 +341,7 @@ export class Ops {
   private buildTask(d: Data, input: TaskInput & { title: string }): { tasks: Task[]; task: Task } {
     if (!input.title.trim()) throw new BadRequest('title required')
     const projectId = input.project ? this.project(d, input.project).id : null
-    if (projectId && d.projects.find((p) => p.id === projectId)?.status === 'archived') throw new BadRequest('the project is archived; reactivate it first')
+    this.assertWorkable(d, projectId)
     const task: Task = {
       id: uid(),
       projectId,
@@ -332,13 +354,18 @@ export class Ops {
       title: input.title.trim(),
     }
     this.applyFields(task, input)
+    // Logging something already done (e.g. from meeting notes): create it open, then complete it like the app does.
+    if (input.status === 'done') {
+      const tasks = completeWithRecurrence([...d.tasks, task], task)
+      return { tasks, task: tasks.find((t) => t.id === task.id)! }
+    }
     return { tasks: [...(task.status === 'next' ? withSingleNext(d.tasks, task.id, task.projectId) : d.tasks), task], task }
   }
 
   /** Copies the optional fields of the input onto a task; null clears a field. */
   private applyFields(t: Task, input: TaskInput): void {
     for (const f of ['dueDate', 'plannedDate'] as const) checkDate(input[f], f)
-    if (input.plannedStart && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.plannedStart)) throw new BadRequest('plannedStart must be HH:mm')
+    if (input.plannedStart && !isHHMM(input.plannedStart)) throw new BadRequest('plannedStart must be HH:mm')
     if (input.estimateMinutes != null && !(input.estimateMinutes > 0)) throw new BadRequest('estimateMinutes must be positive')
     const set = <K extends keyof Task>(key: K, value: Task[K] | null | undefined) => {
       if (value === undefined) return
@@ -387,7 +414,10 @@ export class Ops {
       if (!input.title.trim()) throw new BadRequest('title must not be empty')
       changed.title = input.title.trim()
     }
-    if (input.project !== undefined) changed.projectId = input.project === null ? null : this.project(d, input.project).id
+    if (input.project !== undefined) {
+      changed.projectId = input.project === null ? null : this.project(d, input.project).id
+      if (changed.projectId !== target.projectId) this.assertWorkable(d, changed.projectId)
+    }
     this.applyFields(changed, input)
     let tasks = d.tasks.map((t) => (t.id === id ? changed : t))
     const status = input.status
@@ -438,7 +468,7 @@ export class Ops {
   /** Plan tasks for a day (optionally at a time), or take them off the plan with date null. */
   taskSchedule(ids: string[], date: ISODate | null, start?: string) {
     checkDate(date, 'date')
-    if (start && !/^([01]\d|2[0-3]):[0-5]\d$/.test(start)) throw new BadRequest('start must be HH:mm')
+    if (start && !isHHMM(start)) throw new BadRequest('start must be HH:mm')
     const d = this.read()
     for (const id of ids) this.task(d, id)
     const set_ = new Set(ids)
@@ -499,13 +529,13 @@ export class Ops {
   private buildProject(d: Data, input: ProjectInput & { name: string; nextAction?: string; tasks?: string[] }) {
     const name = input.name.trim()
     if (!name) throw new BadRequest('name required')
-    if (d.projects.some((p) => p.name.toLowerCase() === name.toLowerCase() && p.status !== 'archived')) throw new BadRequest(`a project named "${name}" exists already`)
+    if (this.nameTaken(d, name)) throw new BadRequest(`a project named "${name}" exists already`)
     checkDate(input.dueDate, 'dueDate')
     const project: Project = {
       id: uid(),
       name,
       status: input.status ?? 'active',
-      color: input.color ?? nextColor(d.projects),
+      color: input.color ?? nextColor([...d.projects, ...d.hidden.projects]),
       createdAt: stamp(),
       updatedAt: stamp(),
     }
@@ -539,6 +569,7 @@ export class Ops {
     if (input.name !== undefined) {
       if (!input.name.trim()) throw new BadRequest('name must not be empty')
       changed.name = input.name.trim()
+      if (this.nameTaken(d, changed.name, p.id)) throw new BadRequest(`a project named "${changed.name}" exists already`)
     }
     if (input.status) changed.status = input.status
     if (input.color) changed.color = input.color

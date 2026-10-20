@@ -11,7 +11,7 @@ const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 function setup(cfg: Partial<OAuthConfig> = {}) {
   const db = openDb(':memory:')
   const repo = new Repo(db)
-  const oauth = new OAuthServer(db, { baseUrl: new URL('http://127.0.0.1:5174'), ...cfg })
+  const oauth = new OAuthServer(db, { baseUrl: new URL('http://127.0.0.1:5174'), remoteAddress: () => '127.0.0.1', ...cfg })
   const app = createApp({ repo, mcp: mcpRoutes(repo, { oauth }), oauth: { routes: oauth.routes(), admin: oauth.adminRoutes() } })
   return { app, oauth, repo }
 }
@@ -120,8 +120,19 @@ describe('OAuth for /mcp', () => {
   it('locally only a browser on this machine may approve', async () => {
     const ctx = setup()
     const { body } = await register(ctx.app)
-    const r = await authorize(ctx.app, body.client_id, pkce().challenge, { host: 'zendo.example.com' })
-    expect(r.status).toBe(403)
+    expect((await authorize(ctx.app, body.client_id, pkce().challenge, { host: 'zendo.example.com' })).status).toBe(403)
+    // a forged Host header from another machine is not enough
+    const lan = setup({ remoteAddress: () => '192.168.1.20' })
+    const reg = await register(lan.app)
+    expect((await authorize(lan.app, reg.body.client_id, pkce().challenge)).status).toBe(403)
+  })
+
+  it('keeps registration open under a flood by dropping the oldest idle clients', async () => {
+    const ctx = setup()
+    for (let i = 0; i < 205; i++) await register(ctx.app)
+    const { status, body } = await register(ctx.app)
+    expect(status).toBe(201)
+    expect((await authorize(ctx.app, body.client_id, pkce().challenge)).status).toBe(302)
   })
 
   it('hosted, only allowed users from the login proxy header may approve', async () => {

@@ -16,27 +16,42 @@ interface Connection {
 export function AgentConnections() {
   const { t } = useTranslation()
   const locale = useLocale()
-  // undefined = loading, null = OAuth is off on the server
+  // undefined = loading, null = OAuth is off on the server (the route answers not_found)
   const [list, setList] = useState<Connection[] | null | undefined>(undefined)
+  const [error, setError] = useState('')
   const load = () =>
     api<{ connections: Connection[] }>('/api/mcp/connections')
-      .then((r) => setList(r.connections))
-      .catch(() => setList(null))
+      .then((r) => {
+        setList(r.connections)
+        setError('')
+      })
+      .catch((e: Error) => {
+        if (e.message === 'not_found') setList(null)
+        else {
+          setList((l) => l ?? [])
+          setError(t('settings.agentsError', { error: e.message }))
+        }
+      })
   useEffect(() => {
     void load()
   }, [])
   const fmt = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
   const disconnect = async (c: Connection) => {
     if (!window.confirm(t('settings.agentsDisconnectConfirm', { name: c.name }))) return
-    await api(`/api/mcp/connections/${encodeURIComponent(c.id)}`, { method: 'DELETE' })
-    void load()
+    try {
+      await api(`/api/mcp/connections/${encodeURIComponent(c.id)}`, { method: 'DELETE' })
+      void load()
+    } catch (e) {
+      setError(t('settings.agentsError', { error: (e as Error).message }))
+    }
   }
   if (list === undefined) return null
   return (
     <section>
       <SectionLabel>{t('settings.agents')}</SectionLabel>
       <p className="mb-3 text-[13px] text-ink-2">{list === null ? t('settings.agentsOff') : t('settings.agentsHint')}</p>
-      {list && list.length === 0 && <p className="text-[13px] text-ink-3">{t('settings.agentsNone')}</p>}
+      {error && <p className="mb-2 text-[13px] text-amber">{error}</p>}
+      {list && list.length === 0 && !error && <p className="text-[13px] text-ink-3">{t('settings.agentsNone')}</p>}
       {list && list.length > 0 && (
         <ul className="divide-y divide-line rounded-lg border border-line">
           {list.map((c) => (

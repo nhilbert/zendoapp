@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono'
+import { getConnInfo } from '@hono/node-server/conninfo'
 import { createHash, randomBytes } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 
@@ -25,6 +26,8 @@ export interface OAuthConfig {
   extraRedirects?: string[]
   accessTtlSeconds?: number
   refreshTtlDays?: number
+  /** Address of the connecting peer; defaults to the socket's. Injectable for tests. */
+  remoteAddress?: (c: Context) => string | undefined
 }
 
 export interface AccessInfo {
@@ -38,11 +41,22 @@ const CODE_TTL_MS = 60_000
 const PENDING_TTL_MS = 10 * 60_000
 /** A refresh token presented again within this window is a retry, not theft: refuse it, keep the family. */
 const REUSE_GRACE_MS = 30_000
-const MAX_IDLE_CLIENTS = 50
+/** A registration is followed by sign-in within minutes; clients still without tokens after this are dropped. */
+const IDLE_CLIENT_TTL_MS = 15 * 60_000
+const MAX_IDLE_CLIENTS = 200
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
 const randomToken = () => randomBytes(32).toString('base64url')
 const isLoopbackHost = (host: string) => host === '127.0.0.1' || host === 'localhost' || host === '[::1]'
+const isLoopbackAddress = (addr: string | undefined) => !!addr && (addr === '::1' || /^(::ffff:)?127\./.test(addr))
+
+function socketAddress(c: Context): string | undefined {
+  try {
+    return getConnInfo(c).remote.address
+  } catch {
+    return undefined // not running on @hono/node-server
+  }
+}
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
@@ -66,7 +80,7 @@ interface AuthRequest {
 
 export class OAuthServer {
   private db: DatabaseSync
-  private cfg: Required<Omit<OAuthConfig, 'userHeader'>> & { userHeader?: string }
+  private cfg: Required<Omit<OAuthConfig, 'userHeader' | 'remoteAddress'>> & { userHeader?: string; remoteAddress: (c: Context) => string | undefined }
   private pending = new Map<string, AuthRequest & { expires: number }>()
   private codes = new Map<string, AuthRequest & { expires: number }>()
 
@@ -77,6 +91,7 @@ export class OAuthServer {
       refreshTtlDays: 30,
       allowedUsers: [],
       extraRedirects: [],
+      remoteAddress: socketAddress,
       ...cfg,
       userHeader: cfg.userHeader?.toLowerCase(),
     }
@@ -98,14 +113,19 @@ export class OAuthServer {
 
   // ---------- policy ----------
 
-  /** Who is approving: the e-mail from the login proxy (hosted) or "local" for a browser on this machine. */
+  /**
+   * Who is approving: the e-mail from the login proxy (hosted) or "local" for a browser on this machine.
+   * Locally both the socket's peer and the Host header must be loopback: the Host header alone is set by
+   * the client, and in a container (ZENDO_HOST=0.0.0.0) other machines may reach the port. Hosted, the
+   * header is only as trustworthy as the rule that the port is reachable through the proxy alone.
+   */
   private approver(c: Context): string | null {
     if (!this.local) {
       const email = this.cfg.userHeader ? c.req.header(this.cfg.userHeader)?.trim().toLowerCase() : undefined
       return email && this.cfg.allowedUsers.includes(email) ? email : null
     }
     const host = (c.req.header('host') ?? new URL(c.req.url).host).replace(/:\d+$/, '')
-    return isLoopbackHost(host) && !c.req.header('x-forwarded-for') ? 'local' : null
+    return isLoopbackAddress(this.cfg.remoteAddress(c)) && isLoopbackHost(host) && !c.req.header('x-forwarded-for') ? 'local' : null
   }
 
   /** Redirect URIs a client may register: Claude's callbacks, loopback (Claude Code, RFC 8252) and configured extras. */
@@ -249,11 +269,13 @@ export class OAuthServer {
       }
       const bad = (uris as string[]).filter((u) => !this.redirectAllowed(u))
       if (bad.length) return c.json({ error: 'invalid_redirect_uri', error_description: `not allowed: ${bad.join(', ')}` }, 400)
-      // Clients register again on every fresh connection: drop old ones that never got (or lost) their tokens.
-      const day = new Date(Date.now() - 86_400_000).toISOString()
-      this.db.prepare('DELETE FROM oauth_clients WHERE created_at < ? AND id NOT IN (SELECT client_id FROM oauth_tokens)').run(day)
-      const idle = (this.db.prepare('SELECT COUNT(*) AS n FROM oauth_clients WHERE id NOT IN (SELECT client_id FROM oauth_tokens)').get() as { n: number }).n
-      if (idle >= MAX_IDLE_CLIENTS) return c.json({ error: 'temporarily_unavailable', error_description: 'too many pending registrations' }, 429)
+      // Registration is open, and clients register again on every fresh connection: drop those that got no
+      // tokens soon after, and beyond the cap the oldest of them, so a flood cannot lock the owner out.
+      const idle = 'id NOT IN (SELECT client_id FROM oauth_tokens)'
+      this.db.prepare(`DELETE FROM oauth_clients WHERE created_at < ? AND ${idle}`).run(new Date(Date.now() - IDLE_CLIENT_TTL_MS).toISOString())
+      this.db
+        .prepare(`DELETE FROM oauth_clients WHERE id IN (SELECT id FROM oauth_clients WHERE ${idle} ORDER BY created_at DESC LIMIT -1 OFFSET ?)`)
+        .run(MAX_IDLE_CLIENTS - 1)
       const client: Client = {
         client_id: crypto.randomUUID(),
         client_name: typeof body?.client_name === 'string' ? body.client_name.slice(0, 100) : undefined,

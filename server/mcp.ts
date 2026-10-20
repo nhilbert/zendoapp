@@ -23,6 +23,7 @@ const INSTRUCTIONS = `Zendo is a GTD-style planner for one person.
 - Projects may be given by id or by name. Dates are YYYY-MM-DD in the user's local time. Prefer small, reversible changes and report what you changed.`
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
+// Same rule as isHHMM (src/domain/dates.ts), spelled as a pattern so it shows in the tool's JSON schema.
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:mm')
 const status = z.enum(TASK_STATUSES as [string, ...string[]])
 const projectStatus = z.enum(PROJECT_STATUSES as [string, ...string[]])
@@ -62,18 +63,19 @@ function run(fn: () => unknown) {
 export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer {
   const ops = new Ops(repo, options)
   const server = new McpServer({ name: 'zendo', version: '0.1.0' }, { instructions: INSTRUCTIONS })
-  const tool = (name: string, description: string, inputSchema: z.ZodRawShape, fn: (a: Input) => unknown, readOnly = false) =>
-    server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: readOnly, destructiveHint: false } }, (a: Input) => run(() => fn(a)))
+  /** `destructive`: may delete or overwrite what the user wrote, so clients should ask first; `write` only adds or reversibly changes. */
+  const tool = (name: string, description: string, inputSchema: z.ZodRawShape, fn: (a: Input) => unknown, kind: 'read' | 'write' | 'destructive' = 'write') =>
+    server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: kind === 'read', destructiveHint: kind === 'destructive' } }, (a: Input) => run(() => fn(a)))
 
   // ---------- inbox ----------
-  tool('inbox_list', 'List the unprocessed inbox items, oldest first.', {}, () => ops.inboxList(), true)
+  tool('inbox_list', 'List the unprocessed inbox items, oldest first.', {}, () => ops.inboxList(), 'read')
   tool(
     'inbox_add',
     'Capture one or more items into the inbox, e.g. the action points of meeting notes or an e-mail. One item per actionable point.',
     { items: z.array(z.string().min(1)).min(1).describe('Item texts') },
     (a) => ops.inboxAdd(a.items as string[]),
   )
-  tool('inbox_update', 'Rewrite the text of an inbox item.', { id: z.string(), text: z.string().min(1) }, (a) => ops.inboxUpdate(a.id as string, a.text as string))
+  tool('inbox_update', 'Rewrite the text of an inbox item.', { id: z.string(), text: z.string().min(1) }, (a) => ops.inboxUpdate(a.id as string, a.text as string), 'destructive')
   tool(
     'inbox_clarify',
     'Clarify an inbox item: turn it into a task or a project (the item text is the default title/name), or delete it.',
@@ -87,6 +89,7 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
         .describe('For into=project'),
     },
     (a) => ops.inboxClarify(a.id as string, a.into as 'task', { task: a.task as never, project: a.project as never }),
+    'destructive',
   )
 
   // ---------- tasks ----------
@@ -103,9 +106,9 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
       limit: z.number().int().positive().max(500).optional(),
     },
     (a) => ops.taskList(a as never),
-    true,
+    'read',
   )
-  tool('task_get', 'One task with description and notes.', { id: z.string() }, (a) => ops.taskGet(a.id as string), true)
+  tool('task_get', 'One task with description and notes.', { id: z.string() }, (a) => ops.taskGet(a.id as string), 'read')
   tool(
     'task_create',
     'Create a task. Give a project for project work; status "next" makes it the project\'s next action.',
@@ -123,6 +126,7 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
     'Change a task. Only given fields change; null clears a field. status "done" completes it (recurring tasks spawn the next occurrence).',
     { id: z.string(), title: z.string().optional(), ...taskFields },
     (a) => ops.taskUpdate(a.id as string, a as never),
+    'destructive',
   )
   tool('task_complete', 'Mark a task done (done=false reopens it).', { id: z.string(), done: z.boolean().optional() }, (a) => ops.taskComplete(a.id as string, (a.done as boolean | undefined) ?? true))
   tool('task_add_note', 'Append a dated note to a task (progress, outcome of a call).', { id: z.string(), text: z.string().min(1) }, (a) => ops.taskAddNote(a.id as string, a.text as string))
@@ -132,10 +136,12 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
     { ids: z.array(z.string()).min(1), date: date.nullable(), start: time.optional() },
     (a) => ops.taskSchedule(a.ids as string[], a.date as string | null, a.start as string | undefined),
   )
-  server.registerTool(
+  tool(
     'task_delete',
-    { description: 'Delete a task for good. Prefer task_complete or status "someday" unless the user asks to delete.', inputSchema: { id: z.string() }, annotations: { destructiveHint: true } },
-    (a) => run(() => ops.taskDelete(a.id)),
+    'Delete a task for good. Prefer task_complete or status "someday" unless the user asks to delete.',
+    { id: z.string() },
+    (a) => ops.taskDelete(a.id as string),
+    'destructive',
   )
 
   // ---------- projects ----------
@@ -144,9 +150,9 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
     'List projects with goal, next action, open task count and next meeting. Default: active and planned.',
     { status: z.array(projectStatus).optional() },
     (a) => ops.projectList(a.status as never),
-    true,
+    'read',
   )
-  tool('project_get', 'Everything about one project: goals, notes, open tasks, recently done, upcoming meetings, planned blocks.', { project: projectRef }, (a) => ops.projectGet(a.project as string), true)
+  tool('project_get', 'Everything about one project: goals, notes, open tasks, recently done, upcoming meetings, planned blocks.', { project: projectRef }, (a) => ops.projectGet(a.project as string), 'read')
   tool(
     'project_create',
     'Set up a project. Give a nextAction (becomes the "next" task) and optionally further tasks.',
@@ -178,6 +184,7 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
       private: z.boolean().optional(),
     },
     (a) => ops.projectUpdate(a.project as string, a as never),
+    'destructive',
   )
 
   // ---------- plan ----------
@@ -186,14 +193,14 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
     'The plan of one day (default today): calendar, blocks, planned tasks, due/overdue, left-overs, suggestions, capacity.',
     { date: date.optional() },
     (a) => ops.day(a.date as string | undefined),
-    true,
+    'read',
   )
   tool(
     'plan_week',
     'The rolling plan from a start day (default today) for N days (default 7): meetings, blocks, planned tasks, free time, deadlines.',
     { start: date.optional(), days: z.number().int().min(1).max(28).optional() },
     (a) => ops.week(a.start as string | undefined, a.days as number | undefined),
-    true,
+    'read',
   )
   tool(
     'plan_add_block',
@@ -206,8 +213,9 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
     'Move, resize or reassign a plan block.',
     { id: z.string(), date: date.optional(), project: projectRef.nullable().optional(), size: blockSize.optional(), note: z.string().nullable().optional() },
     (a) => ops.blockUpdate(a.id as string, a as never),
+    'destructive',
   )
-  tool('plan_remove_block', 'Remove a plan block.', { id: z.string() }, (a) => ops.blockRemove(a.id as string))
+  tool('plan_remove_block', 'Remove a plan block.', { id: z.string() }, (a) => ops.blockRemove(a.id as string), 'destructive')
 
   // ---------- review notes ----------
   const kind = z.enum(['daily', 'weekly'])
@@ -216,13 +224,14 @@ export function createMcpServer(repo: Repo, options: OpsOptions = {}): McpServer
     'Notes of the daily review (a day) or weekly review (the week containing the date). Default today / this week.',
     { kind, date: date.optional() },
     (a) => ops.reviewGet(a.kind as 'daily', a.date as string | undefined),
-    true,
+    'read',
   )
   tool(
     'review_save',
     'Write daily or weekly review notes. append=true adds a paragraph instead of replacing.',
     { kind, notes: z.string(), date: date.optional(), append: z.boolean().optional() },
     (a) => ops.reviewSave(a.kind as 'daily', a.notes as string, { date: a.date as string | undefined, append: a.append as boolean | undefined }),
+    'destructive',
   )
   return server
 }

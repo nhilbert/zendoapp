@@ -108,3 +108,36 @@ describe('Ops', () => {
     expect(tasks(repo).map((t) => t.title).sort()).toEqual(['Plan trip', 'Work'])
   })
 })
+
+describe('Ops review fixes', () => {
+  it('demotes a hidden private next action when the agent sets a new one', () => {
+    const { repo, ops } = setup()
+    ops.projectCreate({ name: 'Work' })
+    const secret = ops.taskCreate({ title: 'Secret step', project: 'Work', status: 'next', private: true })
+    const hidden = new Ops(repo, { today: () => TODAY, hidePrivate: true })
+    hidden.taskCreate({ title: 'Visible step', project: 'Work', status: 'next' })
+    const all = tasks(repo)
+    expect(all.find((t) => t.id === secret.id)!.status).toBe('todo')
+    expect(all.filter((t) => t.status === 'next').map((t) => t.title)).toEqual(['Visible step'])
+  })
+
+  it('keeps project names unique against hidden and current projects, preferring current over archived', () => {
+    const { repo, ops } = setup()
+    ops.projectCreate({ name: 'Garden', private: true })
+    const hidden = new Ops(repo, { today: () => TODAY, hidePrivate: true })
+    expect(() => hidden.projectCreate({ name: 'garden' })).toThrow(/exists already/)
+    ops.projectCreate({ name: 'Workshop', status: 'archived' })
+    const fresh = ops.projectCreate({ name: 'Workshop' })
+    expect(ops.taskCreate({ title: 'x', project: 'Workshop' }).projectId).toBe(fresh.id)
+    ops.projectCreate({ name: 'Other' })
+    expect(() => ops.projectUpdate('Other', { name: 'workshop' })).toThrow(/exists already/)
+  })
+
+  it('creates tasks logged as done as completed, and refuses moving into archived projects', () => {
+    const { ops } = setup()
+    expect(ops.taskCreateMany([{ title: 'Sent offer', status: 'done' }])[0]).toMatchObject({ status: 'done' })
+    ops.projectCreate({ name: 'Old', status: 'archived' })
+    const t = ops.taskCreate({ title: 'Loose end' })
+    expect(() => ops.taskUpdate(t.id!, { project: 'Old' })).toThrow(/archived/)
+  })
+})

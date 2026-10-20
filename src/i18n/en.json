@@ -413,7 +413,8 @@
     "agentsNone": "No agent connected.",
     "agentsSince": "connected {{date}} by {{user}}",
     "agentsLastUsed": "last used {{date}}",
-    "agentsDisconnectConfirm": "Disconnect {{name}}? It loses access immediately and has to be approved again."
+    "agentsDisconnectConfirm": "Disconnect {{name}}? It loses access immediately and has to be approved again.",
+    "agentsError": "Could not load or change the connections ({{error}}). Try again; until then they stay as they were."
   },
   "weekday": {
     "1": "Mon",

@@ -413,7 +413,8 @@
     "agentsNone": "Kein Agent verbunden.",
     "agentsSince": "verbunden am {{date}} von {{user}}",
     "agentsLastUsed": "zuletzt genutzt {{date}}",
-    "agentsDisconnectConfirm": "{{name}} trennen? Der Zugriff endet sofort und muss neu freigegeben werden."
+    "agentsDisconnectConfirm": "{{name}} trennen? Der Zugriff endet sofort und muss neu freigegeben werden.",
+    "agentsError": "Verbindungen konnten nicht geladen oder geändert werden ({{error}}). Bitte erneut versuchen; bis dahin bleiben sie unverändert."
   },
   "weekday": {
     "1": "Mo",
