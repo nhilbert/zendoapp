@@ -21,7 +21,7 @@ const json = (r: unknown) => JSON.parse((r as { content: { text: string }[] }).c
 
 describe('MCP endpoint', () => {
   const repo = new Repo(openDb(':memory:'))
-  const app = createApp({ repo, mcp: mcpRoutes(repo, TOKEN) })
+  const app = createApp({ repo, mcp: mcpRoutes(repo, { token: TOKEN }) })
 
   it('rejects requests without the token', async () => {
     const res = await app.request('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })

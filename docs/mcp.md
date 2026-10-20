@@ -14,7 +14,7 @@ Zendo includes an [MCP](https://modelcontextprotocol.io) server, so an agent suc
 
 Projects can be named by id or by name. Calendar events are read-only (they come from Outlook); projects are archived rather than deleted.
 
-## Two ways to connect
+## Ways to connect
 
 ### 1. stdio – the agent starts a local process (simplest, same machine as the data)
 
@@ -40,39 +40,75 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
-### 2. HTTP – the Zendo server answers at `/mcp` (works for the hosted server too)
+### 2. HTTP with OAuth – Claude (web, desktop, mobile, Claude Code) as a connector
 
-Set a long random token in `.env` and restart the server:
+The Zendo server answers at `/mcp` (Streamable HTTP, stateless) and is its own OAuth 2.1 authorization server, as Claude's connectors expect: protected resource metadata, dynamic client registration, authorization code with S256 PKCE, access tokens for one hour, refresh tokens for 30 days that rotate on every use. Zendo keeps no passwords: approving a connection requires the login that already guards the app.
+
+Enable it in `.env`:
 
 ```bash
-echo "ZENDO_MCP_TOKEN=$(openssl rand -hex 32)" >> .env
+ZENDO_MCP_OAUTH=1
+# hosted (ZENDO_PUBLIC_URL set): who may approve, as signed in at the login proxy
+ZENDO_OAUTH_USERS=you@example.com
+# header in which the proxy passes the signed-in e-mail (default x-auth-request-email)
+# ZENDO_OAUTH_USER_HEADER=x-auth-request-email
 ```
 
-The endpoint is `http://127.0.0.1:5174/mcp` (Streamable HTTP, stateless) and requires `Authorization: Bearer <token>`. Without `ZENDO_MCP_TOKEN` the route does not exist.
+Then add `https://zendo.example.com/mcp` in Claude under Settings → Connectors → Add custom connector (Claude Code: `claude mcp add --transport http zendo https://zendo.example.com/mcp`). Claude registers itself, opens Zendo's consent page, you sign in with Microsoft (MFA) if not already, press **Allow**, and the connector is ready. Settings → AI agents in Zendo lists connected agents and disconnects them; tokens stop working at once.
 
-Claude Code:
+Locally (no `ZENDO_PUBLIC_URL`) the endpoint is `http://127.0.0.1:5174/mcp` and only a browser on the same machine can approve – useful for Claude Code; claude.ai cannot reach localhost.
+
+What is checked:
+
+- Redirects: a client may register only Claude's callbacks (`https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback`) and loopback addresses (Claude Code); others need `ZENDO_OAUTH_REDIRECTS`. A third party can therefore not have codes sent to its own server.
+- Approval: hosted, only addresses in `ZENDO_OAUTH_USERS`, read from the proxy's header; with `ZENDO_PUBLIC_URL` but no `ZENDO_OAUTH_USERS` OAuth stays off. The consent page names the application and where it sends you, refuses framing, and each approval is a one-time request bound to the same user.
+- Tokens: stored only as SHA-256 hashes (`oauth_tokens`). An old refresh token presented again after rotation revokes the whole connection, because that means it was copied.
+
+#### Hosting behind Caddy and oauth2-proxy
+
+The consent page must stay behind the login; discovery, registration, token exchange and `/mcp` must not, because Claude's servers call them without a browser session (they are protected by OAuth itself). oauth2-proxy needs `--set-xauthrequest=true` so that it returns the signed-in e-mail. In the Caddyfile of the Zendo host, before the existing `forward_auth`:
+
+```
+zendo.example.com {
+	# never trust this header from the outside
+	request_header -X-Auth-Request-Email
+
+	@agent path /mcp /.well-known/oauth-protected-resource* /.well-known/oauth-authorization-server /oauth/register /oauth/token /oauth/revoke
+	handle @agent {
+		reverse_proxy zendo:5174
+	}
+
+	handle {
+		forward_auth oauth2-proxy:4180 {
+			uri /oauth2/auth
+			copy_headers X-Auth-Request-Email
+		}
+		reverse_proxy zendo:5174
+	}
+}
+```
+
+(`/oauth/authorize` falls into the second block. Keep your existing redirect-to-sign-in handling there.) If Entra conditional access or a firewall restricts by IP, Claude's requests come from `160.79.104.0/21`.
+
+### 3. HTTP with a static token – scripts and clients without OAuth
+
+`ZENDO_MCP_TOKEN=<long random value>` (e.g. `openssl rand -hex 32`) additionally accepts `Authorization: Bearer <token>` at `/mcp`:
 
 ```bash
 claude mcp add --transport http zendo https://zendo.example.com/mcp --header "Authorization: Bearer <token>"
 ```
 
-Clients that only speak stdio can bridge with `npx mcp-remote https://zendo.example.com/mcp --header "Authorization: Bearer <token>"`.
-
-Hosted behind Caddy and oauth2-proxy (architecture section 11), `/mcp` must bypass the login gate, because an agent cannot do the browser sign-in; the bearer token protects it instead. In the Caddyfile, before the `forward_auth` block of the Zendo host:
-
-```
-handle /mcp {
-	reverse_proxy zendo:5174
-}
-```
-
-Treat the token like a password: whoever holds it can read and change all Zendo data. Rotate it by changing `.env` and restarting.
+The token does not expire and grants full access; prefer OAuth where the client supports it, and rotate the token by changing `.env` and restarting. Clients that only speak stdio can bridge with `npx mcp-remote <url>`.
 
 ## Options
 
 | Variable | Effect |
 |---|---|
-| `ZENDO_MCP_TOKEN` | Enables `/mcp` on the server with this bearer token. |
+| `ZENDO_MCP_OAUTH=1` | Enables `/mcp` with OAuth (Claude connectors). Hosted it needs `ZENDO_OAUTH_USERS`. |
+| `ZENDO_OAUTH_USERS` | Comma-separated e-mail addresses that may approve connections (hosted). |
+| `ZENDO_OAUTH_USER_HEADER` | Header carrying the signed-in e-mail from the login proxy; default `x-auth-request-email`. |
+| `ZENDO_OAUTH_REDIRECTS` | Extra redirect URIs clients may register (comma-separated). |
+| `ZENDO_MCP_TOKEN` | Enables `/mcp` with this static bearer token (also together with OAuth). |
 | `ZENDO_MCP_HIDE_PRIVATE=1` | Private projects, their tasks and blocks are invisible to the agent and cannot be changed by it; private appointments show as "private". Applies to both ways. |
 | `TZ` | "Today" is the server's local date. The container runs in UTC unless you set e.g. `TZ=Europe/Berlin`. |
 

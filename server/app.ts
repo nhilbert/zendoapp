@@ -12,13 +12,15 @@ export interface AppOptions {
   ai?: Hono
   /** MCP endpoint for AI agents (server/mcp.ts), mounted at /mcp; it checks its own bearer token. */
   mcp?: Hono
+  /** OAuth for the MCP endpoint (server/oauth.ts): discovery and /oauth/* at the root, connection admin under /api/mcp. */
+  oauth?: { routes: Hono; admin: Hono }
   /** Directory with the built client (dist). When set, the server serves the UI too. */
   staticDir?: string
   /** Public address when hosted behind a reverse proxy (ZENDO_PUBLIC_URL); its host and origin pass the guard. */
   publicUrl?: URL
 }
 
-export function createApp({ repo, calendar, ai, mcp, staticDir, publicUrl }: AppOptions): Hono {
+export function createApp({ repo, calendar, ai, mcp, oauth, staticDir, publicUrl }: AppOptions): Hono {
   const app = new Hono()
 
   app.get('/api/health', (c) => c.json({ ok: true, version: STORE_VERSION, initialized: repo.isInitialized() }))
@@ -46,8 +48,10 @@ export function createApp({ repo, calendar, ai, mcp, staticDir, publicUrl }: App
 
   if (calendar) app.route('/api/calendar', calendar)
   if (ai) app.route('/api/ai', ai)
+  if (oauth) app.route('/api/mcp', oauth.admin)
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404))
   if (mcp) app.route('/mcp', mcp)
+  if (oauth) app.route('/', oauth.routes)
 
   if (staticDir) {
     app.use('/*', serveStatic({ root: staticDir }))

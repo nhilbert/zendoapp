@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { Repo } from './repo.ts'
 import { BadRequest } from './repo.ts'
 import { Ops, type OpsOptions } from './ops.ts'
+import type { OAuthServer } from './oauth.ts'
 import { PROJECT_COLORS, PROJECT_STATUSES, RECURRENCES, TASK_STATUSES } from '../src/domain/types.ts'
 
 /**
@@ -232,17 +233,28 @@ function sameToken(given: string, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
+export interface McpAuth {
+  /** Static bearer token (ZENDO_MCP_TOKEN), for clients configured by hand. */
+  token?: string
+  /** OAuth (server/oauth.ts), for Claude's connectors: access tokens it issued are accepted. */
+  oauth?: OAuthServer
+}
+
 /**
  * Streamable HTTP endpoint, stateless: a fresh server and transport per request (the tools keep no
- * session state). Requires `Authorization: Bearer <ZENDO_MCP_TOKEN>`; without a configured token the
- * route is not mounted at all (see index.ts).
+ * session state). Every request needs `Authorization: Bearer` with the static token or an OAuth access
+ * token; without either configured the route is not mounted at all (see index.ts). The 401 points
+ * OAuth clients to the protected resource metadata, which starts their sign-in.
  */
-export function mcpRoutes(repo: Repo, token: string, options: OpsOptions = {}): Hono {
+export function mcpRoutes(repo: Repo, auth: McpAuth, options: OpsOptions = {}): Hono {
   const app = new Hono()
   app.all('/', async (c) => {
-    const auth = c.req.header('authorization') ?? ''
-    if (!auth.startsWith('Bearer ') || !sameToken(auth.slice(7).trim(), token)) {
-      return c.json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer' })
+    const header = c.req.header('authorization') ?? ''
+    const given = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
+    const ok = !!given && ((auth.token !== undefined && sameToken(given, auth.token)) || auth.oauth?.verifyAccess(given) != null)
+    if (!ok) {
+      const challenge = auth.oauth ? `Bearer resource_metadata="${auth.oauth.resourceMetadataUrl}", scope="zendo"` : 'Bearer'
+      return c.json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': challenge })
     }
     const server = createMcpServer(repo, options)
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })

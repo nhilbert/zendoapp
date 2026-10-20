@@ -406,7 +406,14 @@
     "aiServer": "The Zendo server uses {{provider}} · {{model}} with the key stored there. Auto in Clarify sends the inbox text and project names; Propose in Week sends project names, headline goals, due dates, open-work figures and free hours per day – no task or meeting titles.",
     "aiServerMissing": "No AI key on the Zendo server. Add ANTHROPIC_API_KEY (or OPENAI_API_KEY) to its settings and restart Zendo; the key stays on the server and never reaches the browser.",
     "aiBrowserFallback": "Fallback: key stored in this browser",
-    "aiRemoveBrowserKey": "Remove the key stored in this browser (no longer needed)"
+    "aiRemoveBrowserKey": "Remove the key stored in this browser (no longer needed)",
+    "agents": "AI agents (MCP)",
+    "agentsHint": "Agents such as Claude connect through OAuth and can then read and change your inbox, tasks, projects, plan and review notes. Disconnecting one stops its access at once.",
+    "agentsOff": "Not enabled on the server. Set ZENDO_MCP_OAUTH=1 (see docs/mcp.md) to let Claude connect.",
+    "agentsNone": "No agent connected.",
+    "agentsSince": "connected {{date}} by {{user}}",
+    "agentsLastUsed": "last used {{date}}",
+    "agentsDisconnectConfirm": "Disconnect {{name}}? It loses access immediately and has to be approved again."
   },
   "weekday": {
     "1": "Mon",
