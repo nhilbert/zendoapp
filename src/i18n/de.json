@@ -312,7 +312,12 @@
     "invalidTimes": "Bitte ein Datum und eine Endzeit nach der Startzeit angeben.",
     "invalidLink": "Bitte einen Weblink eingeben (https://…).",
     "join": "Beitreten",
-    "joinWith": "In {{app}} beitreten"
+    "joinWith": "In {{app}} beitreten",
+    "recurring": "Serientermin",
+    "seriesOf": "Serie: {{name}}",
+    "applyTo": "Gilt für",
+    "applyOne": "nur diesen Termin",
+    "applySeries": "alle Termine der Serie"
   },
   "review": {
     "title": "Rückblick",

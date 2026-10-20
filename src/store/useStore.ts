@@ -80,6 +80,8 @@ interface State {
   deleteEvent: (id: string) => void
   /** Replaces the previous import of that source: its old events are dropped, the new ones added (kind/project overrides survive). */
   importEvents: (events: CalendarEvent[], source: 'ics' | 'm365') => { total: number; kept: number; removed: number }
+  /** Link every meeting of an Outlook series to a project (null: unlink); new occurrences follow on sync (CAL-10). */
+  linkSeries: (seriesId: string, projectId: string | null) => void
 
   // plan blocks
   addBlock: (date: ISODate, projectId: string | null, size?: BlockSize, note?: string) => PlanBlock
@@ -314,12 +316,22 @@ export const useStore = create<State>()(
       importEvents: (incoming, source) => {
         let result = { total: 0, kept: 0, removed: 0 }
         set((s) => {
-          const { events, ...counts } = mergeImportedEvents(s.events.filter((e) => e.source === source), incoming, { projects: s.projects })
+          const { events, ...counts } = mergeImportedEvents(s.events.filter((e) => e.source === source), incoming.map((ev) => ({ ...ev, source })), { projects: s.projects })
           result = counts
           return { events: [...s.events.filter((e) => e.source !== source), ...events] }
         })
         return result
       },
+      linkSeries: (seriesId, projectId) =>
+        set((s) => ({
+          projects: s.projects.map((p) => {
+            const linked = p.meetingSeries?.includes(seriesId) ?? false
+            if (linked === (p.id === projectId)) return p
+            const meetingSeries = linked ? p.meetingSeries!.filter((x) => x !== seriesId) : [...(p.meetingSeries ?? []), seriesId]
+            return { ...p, meetingSeries, updatedAt: now() }
+          }),
+          events: s.events.map((e) => (e.seriesId === seriesId ? { ...e, projectId } : e)),
+        })),
 
       addBlock: (date, projectId, size = 0.5, note) => {
         const block: PlanBlock = { id: uid(), date, projectId, size, ...(note?.trim() ? { note: note.trim() } : {}) }

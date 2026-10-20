@@ -6,10 +6,11 @@ import { isHHMM, isISODate, todayISO } from '@/domain/dates'
 import { useStore } from '@/store/useStore'
 import { useUi } from '@/store/useUi'
 import { safeJoinUrl } from '@/domain/meeting'
-import { Button, Checkbox, Field, Input, Modal, Select } from './ui'
+import { Button, Checkbox, Field, Input, Modal, Segmented, Select } from './ui'
 import { JoinLink } from './JoinLink'
 
 type Draft = Omit<CalendarEvent, 'id' | 'source'>
+type SeriesScope = 'one' | 'series'
 
 const EMPTY: Draft = { title: '', date: todayISO(), start: '09:00', end: '10:00', kind: 'online', availability: 'busy', location: '', joinUrl: '', projectId: null, allDay: false }
 
@@ -29,13 +30,18 @@ export default function EventDialog() {
   const addEvent = useStore((s) => s.addEvent)
   const updateEvent = useStore((s) => s.updateEvent)
   const deleteEvent = useStore((s) => s.deleteEvent)
+  const linkSeries = useStore((s) => s.linkSeries)
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [error, setError] = useState<string | null>(null)
+  const [scope, setScope] = useState<SeriesScope>('series')
+  const seriesProject = existing?.seriesId ? projects.find((p) => p.meetingSeries?.includes(existing.seriesId!)) : undefined
 
   useEffect(() => {
     if (!ui) return
     if (existing) {
       setDraft({ ...existing })
+      // A meeting that follows its series changes the series by default; an exception changes only itself.
+      setScope((existing.projectId ?? null) === (seriesProject?.id ?? null) ? 'series' : 'one')
     } else {
       setDraft({ ...EMPTY, date: todayISO(), ...ui.draft })
     }
@@ -43,6 +49,7 @@ export default function EventDialog() {
 
   if (!ui) return null
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }))
+  const askScope = !!existing?.seriesId && (draft.projectId ?? null) !== (existing.projectId ?? null)
 
   const save = () => {
     if (!draft.title.trim()) return
@@ -56,8 +63,10 @@ export default function EventDialog() {
       return
     }
     const clean = { ...(draft.allDay ? { ...draft, start: '00:00', end: '23:59' } : draft), joinUrl }
-    if (existing) updateEvent(existing.id, clean)
-    else addEvent(clean)
+    if (existing) {
+      updateEvent(existing.id, clean)
+      if (askScope && scope === 'series') linkSeries(existing.seriesId!, clean.projectId ?? null)
+    } else addEvent(clean)
     close()
   }
 
@@ -106,7 +115,7 @@ export default function EventDialog() {
               ))}
             </Select>
           </Field>
-          <Field label={t('event.project')}>
+          <Field label={t('event.project')} hint={existing?.seriesId ? (seriesProject ? t('event.seriesOf', { name: seriesProject.name }) : t('event.recurring')) : undefined}>
             <Select value={draft.projectId ?? ''} onChange={(e) => set({ projectId: e.target.value || null })}>
               <option value="">{t('common.none')}</option>
               {projects
@@ -119,6 +128,20 @@ export default function EventDialog() {
             </Select>
           </Field>
         </div>
+        {askScope && (
+          <div className="-mt-1 flex flex-wrap items-center gap-2 text-[12px] text-ink-2">
+            {t('event.applyTo')}
+            <Segmented<SeriesScope>
+              size="sm"
+              value={scope}
+              onChange={setScope}
+              options={[
+                { value: 'one', label: t('event.applyOne') },
+                { value: 'series', label: t('event.applySeries') },
+              ]}
+            />
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('event.location')} hint={t('common.optional')}>
             <Input value={draft.location ?? ''} onChange={(e) => set({ location: e.target.value })} />

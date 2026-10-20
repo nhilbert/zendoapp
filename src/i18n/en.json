@@ -312,7 +312,12 @@
     "invalidTimes": "Please enter a date, and an end time after the start time.",
     "invalidLink": "Enter a web link (https://…).",
     "join": "Join",
-    "joinWith": "Join in {{app}}"
+    "joinWith": "Join in {{app}}",
+    "recurring": "recurring",
+    "seriesOf": "series: {{name}}",
+    "applyTo": "Apply to",
+    "applyOne": "only this meeting",
+    "applySeries": "all meetings in this series"
   },
   "review": {
     "title": "Review",
