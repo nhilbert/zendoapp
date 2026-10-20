@@ -106,7 +106,11 @@
       "thinking": "Denke nach…",
       "applied": "Vorschlag übernommen – prüfen und anpassen.",
       "error": "KI-Anfrage fehlgeschlagen: {{message}}",
-      "noKey": "Hinterlege einen API-Schlüssel in den Einstellungen für KI-Vorschläge."
+      "noKey": "Kein KI-Schlüssel eingerichtet. ANTHROPIC_API_KEY in .env eintragen und Zendo neu starten.",
+      "errAuth": "der Anbieter hat den API-Schlüssel abgelehnt",
+      "errRate": "Ratenlimit erreicht – in einer Minute erneut versuchen",
+      "errRefused": "das Modell hat diese Notiz abgelehnt",
+      "errServer": "der lokale Server läuft nicht"
     },
     "back": "Zurück",
     "more": "Mehr Optionen",
@@ -350,7 +354,11 @@
     "importConfirm": "Alle aktuellen Daten durch den Inhalt dieser Datei ersetzen?",
     "importDone": "Daten importiert.",
     "importInvalid": "Diese Datei ist kein Zendo-Export. Es wurde nichts geändert.",
-    "m365NotConfigured": "Microsoft 365 ist nicht konfiguriert: MS_CLIENT_ID und MS_TENANT_ID in .env eintragen (siehe docs/outlook-setup.md) und neu starten."
+    "m365NotConfigured": "Microsoft 365 ist nicht konfiguriert: MS_CLIENT_ID und MS_TENANT_ID in .env eintragen (siehe docs/outlook-setup.md) und neu starten.",
+    "aiServer": "Der lokale Server nutzt {{provider}} · {{model}} mit dem Schlüssel aus .env. Bei „Auto“ werden Eingangstext und Projektnamen an den Anbieter gesendet.",
+    "aiServerMissing": "Kein KI-Schlüssel auf dem lokalen Server. ANTHROPIC_API_KEY (oder OPENAI_API_KEY) in .env eintragen und Zendo neu starten; der Schlüssel bleibt dann auf diesem Rechner und erreicht nie den Browser.",
+    "aiBrowserFallback": "Fallback: Schlüssel in diesem Browser",
+    "aiRemoveBrowserKey": "Im Browser gespeicherten Schlüssel entfernen (nicht mehr nötig)"
   },
   "weekday": {
     "1": "Mo",

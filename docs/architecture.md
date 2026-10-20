@@ -112,9 +112,10 @@ All JSON under `/api`, loopback only. Every request must carry the header `x-zen
 | `PUT /api/state` | Replace everything (migrated to the current schema first). Used for the first push of local data and for JSON imports. |
 | `POST /api/changes` | `{ upserts: {col: records[]}, deletes: {col: ids[]}, settings? }` applied in one transaction. |
 | `POST /api/inbox` | Quick capture from outside the app: `{ text }`. |
-| `GET /api/calendar/status` · `POST /api/calendar/connect` · `POST /api/calendar/disconnect` · `GET /api/calendar/events?from&to` | Microsoft 365: status, interactive sign-in (opens the browser), sign-out, calendarView mapped to Zendo events. 503 `not_configured` without an app registration. |
+| `GET /api/calendar/status` · `POST /api/calendar/connect` · `POST /api/calendar/sync` · `POST /api/calendar/disconnect` · `GET /api/calendar/events?from&to` | Microsoft 365: status with last sync, interactive sign-in (opens the browser, then syncs), sync now, sign-out, raw calendarView. The server also syncs at start and every `ZENDO_CALENDAR_SYNC_MINUTES` (default 15) and writes events into the database, keeping the owner's overrides. 503 `not_configured` without an app registration. |
+| `GET /api/ai/status` · `POST /api/ai/clarify` | AI: provider/model from `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `ZENDO_AI_PROVIDER`, `ZENDO_AI_MODEL`); clarify suggestion for `{ text, locale }`, with project names read from the database. Claude calls use structured output (JSON schema) and the server-side refusal fallback. 503 `not_configured` without a key. |
 
-Planned: `POST /api/ai/*` (server-side AI with the key in `.env`), a server-side periodic calendar sync, `GET /api/export`.
+Planned: `POST /api/ai/plan-week`, `POST /api/ai/project-actions`, `GET /api/export`.
 
 ## 6. Calendar integration design (Microsoft 365)
 
@@ -153,8 +154,8 @@ Ignored on purpose: CalDAV (not offered by Exchange Online), EWS (blocked for ne
 | **0 – Prototype (done)** | Validate design and flows | Client-only app, localStorage, sample data, de/en, DnD on Board/Week/Today, ICS file import, AI clarify (browser-direct). |
 | **1 – Feedback round** | Adjust the design to the owner's feedback; answer open questions in `requirements.md` | Visual tweaks, interaction fixes, command palette, natural-language dates if wanted. |
 | **2 – Local server + SQLite** (done) | Durable data, one-command start | Hono server on Node 24 with `node:sqlite`, migrations, repository, state/changes API, diff-based client sync with offline queue, automatic push of prototype data, daily backups, external quick capture, pre-commit guard, tests. Open: `npm start` auto-open of the browser, LAN token. |
-| **3 – Outlook calendar** (started) | Real meetings in Week and Today | Done: registration guide, `server/calendar.mjs` (MSAL loopback flow, persistent token cache, calendarView → events, free/busy, all-day expansion), Vite proxy, Settings connect/sync/disconnect, sync on app start. Open: periodic sync while running, delta queries, ICS feed fallback. |
-| **4 – AI on the server** | Clarify, project breakdown, week proposal | Server endpoints, prompt files, usage log, privacy notice. |
+| **3 – Outlook calendar** (done) | Real meetings in Week and Today | Done: registration guide, `server/calendar.mjs` (MSAL loopback flow, persistent token cache, calendarView → events, free/busy, all-day expansion), Vite proxy, Settings connect/sync/disconnect, sync on app start. Periodic server-side sync every 15 minutes. Open: delta queries, ICS feed fallback. |
+| **4 – AI on the server** (started) | Clarify, project breakdown, week proposal | Done: `/api/ai/clarify` with key in `.env`, structured output, refusal fallback, privacy notice in Settings, browser key only as fallback. Open: project breakdown, week proposal, usage log. |
 | **5 – Rhythm features** | Make the rituals smoother | Recurring chores, weekly objectives, top-3, shutdown checklist, load warning, rollover, focus mode, external capture endpoint. |
 
 ## 11. Hosting options (access from a phone, computer switched off)

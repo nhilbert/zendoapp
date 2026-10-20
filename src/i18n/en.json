@@ -106,7 +106,11 @@
       "thinking": "Thinking…",
       "applied": "Suggestion applied — check and adjust.",
       "error": "AI request failed: {{message}}",
-      "noKey": "Add an API key in Settings to get AI suggestions."
+      "noKey": "No AI key configured. Add ANTHROPIC_API_KEY to .env and restart Zendo.",
+      "errAuth": "the provider rejected the API key",
+      "errRate": "rate limit reached – try again in a minute",
+      "errRefused": "the model declined this note",
+      "errServer": "the local server is not running"
     },
     "back": "Back",
     "more": "More options",
@@ -350,7 +354,11 @@
     "importConfirm": "Replace all current data with the contents of this file?",
     "importDone": "Data imported.",
     "importInvalid": "This file is not a Zendo export. Nothing was changed.",
-    "m365NotConfigured": "Microsoft 365 is not configured: add MS_CLIENT_ID and MS_TENANT_ID to .env (see docs/outlook-setup.md) and restart."
+    "m365NotConfigured": "Microsoft 365 is not configured: add MS_CLIENT_ID and MS_TENANT_ID to .env (see docs/outlook-setup.md) and restart.",
+    "aiServer": "The local server uses {{provider}} · {{model}} with the key from .env. Inbox text and project names are sent to the provider when you press Auto.",
+    "aiServerMissing": "No AI key on the local server. Add ANTHROPIC_API_KEY (or OPENAI_API_KEY) to .env and restart Zendo; the key then stays on this machine and never reaches the browser.",
+    "aiBrowserFallback": "Fallback: key stored in this browser",
+    "aiRemoveBrowserKey": "Remove the key stored in this browser (no longer needed)"
   },
   "weekday": {
     "1": "Mon",

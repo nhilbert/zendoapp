@@ -126,7 +126,7 @@ Priority: **M** must, **S** should, **C** could.
 - **CAL-7 (M) [P]** Private meetings: Outlook sensitivity private/personal/confidential (ICS `CLASS:PRIVATE`) marks an event private automatically; any event can be marked private by hand and that choice survives syncs. While private items are hidden, private meetings stay in the plan (their time is taken) but are masked as "Private appointment" without location, project or details, and cannot be opened.
 - **CAL-8 (M) [P]** Budget window: only the part of a meeting inside the configurable window (default 07:00–19:00) counts against the day's budget; evening and early-morning events cost nothing.
 - **CAL-6 (M) [P]** Free/busy is respected: events shown as *free* (reminders, other people's holidays) are displayed muted and never block time; tentative, busy and out-of-office block. Manual events can be marked free.
-- **CAL-2 (M) [ ]** Read-only sync through Microsoft Graph (`/me/calendarView`, delegated `Calendars.Read`, auth code + PKCE via the local server, token cache outside the repo). Recurrences expanded by Graph.
+- **CAL-2 (M) [P]** Read-only sync through Microsoft Graph, run by the server at start and every 15 minutes (`/me/calendarView`, delegated `Calendars.Read`, auth code + PKCE via the local server, token cache outside the repo). Recurrences expanded by Graph.
 - **CAL-3 (S) [ ]** Fallback: published ICS feed polled by the local server (if app registration is not possible in the tenant).
 - **CAL-4 (C) [ ]** Write-back: create "focus" calendar entries from plan blocks so others see busy time.
 - **CAL-5 (S) [p]** Classify events by kind (online, in person, workshop, coaching) and link to projects; heuristics on import, editable.
@@ -137,7 +137,7 @@ Priority: **M** must, **S** should, **C** could.
 - **AI-3 (S) [ ]** Project page: break a project outcome into candidate actions; propose the next action.
 - **AI-4 (S) [ ]** Week: propose block allocation across the two weeks from deadlines, next actions, estimates and free capacity; explain the proposal; the user drags to adjust.
 - **AI-5 (S) [ ]** Reviews: draft the daily/weekly journal from completed items and notes.
-- **AI-6 (M) [ ]** Calls go through the local server (key never in the browser); clear notice about what is sent to the provider (inbox text, project names).
+- **AI-6 (M) [P]** Calls go through the local server with the key from `.env` (key never in the browser); Settings states the provider, model and what is sent (inbox text, project names). A key stored in the browser remains only as a fallback when the server has none. A managed secret store is deferred (owner's decision, 2026-10-20).
 
 ### 5.14 Settings and data
 - **SET-1 (M) [P]** Language (de/en), working hours, focus hours per full day, work days.

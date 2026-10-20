@@ -9,11 +9,12 @@ import { STORE_VERSION } from '../src/domain/migrations.ts'
 export interface AppOptions {
   repo: Repo
   calendar?: Hono
+  ai?: Hono
   /** Directory with the built client (dist). When set, the server serves the UI too. */
   staticDir?: string
 }
 
-export function createApp({ repo, calendar, staticDir }: AppOptions): Hono {
+export function createApp({ repo, calendar, ai, staticDir }: AppOptions): Hono {
   const app = new Hono()
 
   app.get('/api/health', (c) => c.json({ ok: true, version: STORE_VERSION, initialized: repo.isInitialized() }))
@@ -40,6 +41,7 @@ export function createApp({ repo, calendar, staticDir }: AppOptions): Hono {
   })
 
   if (calendar) app.route('/api/calendar', calendar)
+  if (ai) app.route('/api/ai', ai)
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404))
 
   if (staticDir) {

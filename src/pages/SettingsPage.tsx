@@ -6,6 +6,7 @@ import { useStore } from '@/store/useStore'
 import { isHHMM } from '@/domain/dates'
 import { changeLocale } from '@/i18n'
 import { type AiProvider, type AiSettings, DEFAULT_MODELS, loadAiSettings, saveAiSettings } from '@/ai/settings'
+import { api } from '@/sync/api'
 import { type M365Status, NotConfigured, ServiceUnavailable, connect, disconnect, getStatus, syncCalendar } from '@/calendar/m365'
 import { useSync } from '@/store/useSync'
 import { PRE_SYNC_BACKUP } from '@/sync/server'
@@ -53,6 +54,12 @@ export default function SettingsPage() {
     }
   }
   const [ai, setAi] = useState<AiSettings>(() => loadAiSettings())
+  const [aiServer, setAiServer] = useState<{ configured: boolean; provider: string | null; model: string | null } | null>(null)
+  useEffect(() => {
+    api<{ configured: boolean; provider: string | null; model: string | null }>('/api/ai/status')
+      .then(setAiServer)
+      .catch(() => setAiServer(null))
+  }, [])
   const icsRef = useRef<HTMLInputElement>(null)
   const jsonRef = useRef<HTMLInputElement>(null)
 
@@ -222,7 +229,23 @@ export default function SettingsPage() {
 
         <section>
           <SectionLabel>{t('settings.ai')}</SectionLabel>
-          <p className="mb-3 text-[13px] text-ink-2">{t('settings.aiHint')}</p>
+          {aiServer?.configured ? (
+            <p className="mb-3 text-[13px] text-ink">
+              {t('settings.aiServer', { provider: aiServer.provider === 'openai' ? 'ChatGPT (OpenAI)' : 'Claude (Anthropic)', model: aiServer.model ?? '' })}
+            </p>
+          ) : (
+            <p className="mb-3 text-[13px] text-ink-2">{t('settings.aiServerMissing')}</p>
+          )}
+          {aiServer?.configured ? (
+            ai.apiKey && (
+              <Button variant="ghost" size="sm" onClick={() => updateAi({ provider: 'none', apiKey: '', model: '' })}>
+                {t('settings.aiRemoveBrowserKey')}
+              </Button>
+            )
+          ) : (
+            <details className="mt-1" open={!!ai.apiKey}>
+              <summary className="cursor-pointer select-none text-[12px] text-ink-3">{t('settings.aiBrowserFallback')}</summary>
+              <p className="my-3 text-[13px] text-ink-2">{t('settings.aiHint')}</p>
           <div className="grid grid-cols-[160px_1fr] gap-3">
             <Field label={t('settings.provider')}>
               <Select value={ai.provider} onChange={(e) => updateAi({ provider: e.target.value as AiProvider })}>
@@ -239,6 +262,8 @@ export default function SettingsPage() {
             <Field label={t('settings.model')} className="mt-3 w-72">
               <Input value={ai.model} placeholder={DEFAULT_MODELS[ai.provider]} onChange={(e) => updateAi({ model: e.target.value })} />
             </Field>
+          )}
+            </details>
           )}
         </section>
 

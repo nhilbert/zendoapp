@@ -13,6 +13,7 @@ import { Repo } from './repo.ts'
 import { backupDaily } from './backup.ts'
 import { calendarService, startCalendarSyncJob } from './calendar.ts'
 import { createApp } from './app.ts'
+import { aiRoutes, resolveAi, type AiProviderName } from './ai.ts'
 
 if (existsSync('.env')) process.loadEnvFile('.env')
 
@@ -39,13 +40,21 @@ const calendar = calendarService(
   repo,
 )
 startCalendarSyncJob(calendar, Number(process.env.ZENDO_CALENDAR_SYNC_MINUTES || 15))
+const aiProvider = process.env.ZENDO_AI_PROVIDER?.trim()
+const ai = resolveAi({
+  provider: aiProvider === 'anthropic' || aiProvider === 'openai' ? (aiProvider as AiProviderName) : undefined,
+  model: process.env.ZENDO_AI_MODEL,
+  anthropicKey: process.env.ANTHROPIC_API_KEY?.trim() || undefined,
+  openaiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
+})
 const hasUi = existsSync(path.join(DIST, 'index.html'))
-const app = createApp({ repo, calendar: calendar.routes, staticDir: hasUi ? DIST : undefined })
+const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), staticDir: hasUi ? DIST : undefined })
 
 const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: PORT }, () => {
   console.log(`Zendo server on http://127.0.0.1:${PORT} · database ${DB_FILE}${backup ? ` · backup ${backup}` : ''}`)
   if (!hasUi) console.log('No dist/ build found: serving the API only (fine with npm run dev; run npm run build for npm start).')
   if (!process.env.MS_CLIENT_ID) console.log('Microsoft 365 not configured (no .env) – calendar routes answer 503, everything else works.')
+  console.log(ai ? `AI: ${ai.provider} · ${ai.model}` : 'AI: not configured (add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env)')
 })
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
