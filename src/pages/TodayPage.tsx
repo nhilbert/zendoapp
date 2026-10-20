@@ -11,11 +11,12 @@ import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
-import { Button, Checkbox, IconButton, SectionLabel, Textarea, cx } from '@/components/ui'
+import { Button, Checkbox, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone } from '@/components/ui'
 import { ProjectChip, ProjectDot, TaskMeta, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 
 const SLOT = 30 // minutes
 const MIN_PX = 22 // minimum px per slot; the grid stretches to fill the viewport
+const PHONE_PX = 30 // fixed slot height on phones (comfortable touch targets, page scrolls)
 const LABEL_W = 52
 
 export default function TodayPage() {
@@ -38,6 +39,8 @@ export default function TodayPage() {
   const openEvent = useUi((s) => s.openEvent)
   const sensors = useDndSensors()
   const [activeId, setActiveId] = useState<string | null>(null)
+  const isPhone = useIsPhone()
+  const [phoneView, setPhoneView] = useState<'plan' | 'timeline'>('plan')
 
   const dayEvents = eventsOn(events, date)
   const planned = tasksPlannedOn(tasks, date).sort(sortTasks)
@@ -81,7 +84,7 @@ export default function TodayPage() {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const px = Math.max(MIN_PX, Math.floor((avail - (allDayEvents.length ? 44 : 0) - 16) / Math.max(1, slots.length)))
+  const px = isPhone ? PHONE_PX : Math.max(MIN_PX, Math.floor((avail - (allDayEvents.length ? 44 : 0) - 16) / Math.max(1, slots.length)))
   const height = slots.length * px
   const y = (hhmm: string) => ((hhmmToMinutes(hhmm) - gridStart) / SLOT) * px
 
@@ -102,12 +105,12 @@ export default function TodayPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] min-h-[520px] flex-col">
-      <header className="mb-6 flex items-end justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-[26px] font-medium leading-tight tracking-[-0.02em]">{date === today ? t('today.title') : title}</h1>
-            {date === today && <span className="pt-1 text-[14px] text-ink-3">{title}</span>}
+    <div className="flex flex-col md:h-[calc(100dvh-5rem)] md:min-h-[520px]">
+      <header className="mb-4 flex items-end justify-between gap-4 md:mb-6 md:gap-6">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{date === today ? t('today.title') : title}</h1>
+            {date === today && <span className="text-[14px] text-ink-3">{title}</span>}
           </div>
           <p className="tnum mt-1 text-[13px] text-ink-2">
             {t('today.capacity', {
@@ -132,10 +135,21 @@ export default function TodayPage() {
         </div>
       </header>
 
+      <div className="mb-4 md:hidden">
+        <Segmented<'plan' | 'timeline'>
+          value={phoneView}
+          onChange={setPhoneView}
+          options={[
+            { value: 'plan', label: t('today.viewList') },
+            { value: 'timeline', label: t('today.viewTimeline') },
+          ]}
+        />
+      </div>
+
       <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-12">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 md:grid-cols-[minmax(0,1fr)_360px] md:gap-12">
           {/* Timeline */}
-          <section ref={sectionRef} className="min-h-0 overflow-y-auto overflow-x-hidden pr-1 pt-2">
+          <section ref={sectionRef} className={cx('min-h-0 overflow-x-hidden pr-1 pt-2 md:block md:overflow-y-auto', phoneView === 'timeline' ? 'block' : 'hidden')}>
             {allDayEvents.length > 0 && (
               <div className="mb-3 flex flex-wrap gap-2" style={{ paddingLeft: LABEL_W }}>
                 {allDayEvents.map((ev) => (
@@ -190,7 +204,7 @@ export default function TodayPage() {
           </section>
 
           {/* Plan & candidates */}
-          <aside className="flex min-h-0 flex-col gap-8 overflow-y-auto pb-4 pr-1">
+          <aside className={cx('min-h-0 flex-col gap-8 pb-4 md:flex md:overflow-y-auto md:pr-1', phoneView === 'plan' ? 'flex' : 'hidden')}>
             <div>
               <SectionLabel>{t('today.plan')}</SectionLabel>
               <Droppable id="untimed" className="min-h-[56px] rounded-xl transition-colors" overClassName="bg-accent-soft/60">
@@ -321,7 +335,9 @@ function TaskBlock({ task }: { task: Task }) {
         <div className={cx('truncate text-[12.5px] leading-tight', task.status === 'done' && 'strike')}>{task.title}</div>
         {(task.estimateMinutes ?? 30) >= 45 && (
           <div className="tnum mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-3">
-            {fmtTime(task.plannedStart!, locale)}–{fmtTime(end, locale)}
+            <span className="whitespace-nowrap">
+              {fmtTime(task.plannedStart!, locale)}–{fmtTime(end, locale)}
+            </span>
             {project && (
               <>
                 <ProjectDot color={project.color} size={5} /> <span className="truncate">{project.name}</span>
@@ -374,7 +390,7 @@ function CandidateRow({ task, date }: { task: Task; date: ISODate }) {
         <span className="truncate">{task.title}</span>
         {task.status === 'next' && project && <span className="text-[10px] uppercase tracking-wide text-accent">{t('today.nextAction')}</span>}
       </button>
-      <IconButton label={t('today.addToDay')} onClick={() => scheduleTask(task.id, date)} className="opacity-0 group-hover:opacity-100">
+      <IconButton label={t('today.addToDay')} onClick={() => scheduleTask(task.id, date)} className="reveal opacity-0 group-hover:opacity-100">
         <Plus size={14} />
       </IconButton>
     </li>

@@ -87,7 +87,7 @@ export default function InboxPage() {
                 )}
                 <div className="mt-0.5 text-[11px] text-ink-3">{fmt.format(new Date(item.createdAt))}</div>
               </div>
-              <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="reveal flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <IconButton label={t('nav.clarify')} onClick={() => navigate(`/clarify?id=${item.id}`)}>
                   <ArrowRight size={15} />
                 </IconButton>

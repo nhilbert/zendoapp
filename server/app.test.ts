@@ -13,6 +13,15 @@ describe('API', () => {
     expect((await app.request('/api/state', { headers: { ...H, host: 'zendo.example.com' } })).status).toBe(403)
     expect((await app.request('/api/health')).status).toBe(200)
   })
+  it('accepts the configured public URL when hosted behind a proxy', async () => {
+    const hosted = createApp({ repo: new Repo(openDb(':memory:')), publicUrl: new URL('https://zendo.example.com') })
+    const pub = { ...H, host: 'zendo.example.com', origin: 'https://zendo.example.com' }
+    expect((await hosted.request('/api/state', { headers: pub })).status).toBe(200)
+    expect((await hosted.request('/api/state', { headers: { ...pub, origin: 'https://evil.example' } })).status).toBe(403)
+    expect((await hosted.request('/api/state', { headers: { ...pub, origin: 'http://zendo.example.com' } })).status).toBe(403)
+    expect((await hosted.request('/api/state', { headers: { ...pub, host: 'other.example.com' } })).status).toBe(403)
+    expect((await hosted.request('/api/state', { headers: { ...pub, 'x-zendo': '' } })).status).toBe(403)
+  })
   it('round-trips state and changes', async () => {
     const empty = await (await app.request('/api/state', { headers: H })).json()
     expect(empty.initialized).toBe(false)

@@ -262,7 +262,7 @@ export default function ClarifyPage() {
   )
 
   const estimateRow = (
-    <div className="grid grid-cols-[1fr_auto] gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
       <Field label={t('clarify.form.estimate')}>
         <div className="flex flex-wrap gap-1.5">
           {ESTIMATES.map((m) => (
@@ -310,28 +310,28 @@ export default function ClarifyPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6 flex items-end justify-between">
+      <div className="mb-6 flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-[26px] font-medium leading-tight tracking-[-0.02em]">{t('clarify.title')}</h1>
+          <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{t('clarify.title')}</h1>
           <p className="mt-1 text-[14px] text-ink-2">{t('clarify.subtitle')}</p>
         </div>
-        <span className="tnum text-[13px] text-ink-3">{t('clarify.progress', { current: index + 1, total: inbox.length })}</span>
+        <span className="tnum shrink-0 whitespace-nowrap text-[13px] text-ink-3">{t('clarify.progress', { current: index + 1, total: inbox.length })}</span>
       </div>
 
       {step === 'kind' ? (
-        <div key={`${item.id}-kind`} className="card fade-in p-7">
+        <div key={`${item.id}-kind`} className="card fade-in p-4 md:p-7">
           <textarea
             value={item.text}
             onChange={(e) => store.updateInboxItem(item.id, e.target.value)}
             rows={Math.min(8, Math.max(2, item.text.split('\n').length))}
-            className="field-bare -mx-2 w-full resize-none px-2 py-1 text-[21px] leading-relaxed"
+            className="field-bare -mx-2 w-full resize-none px-2 py-1 text-[18px] leading-relaxed md:text-[21px]"
           />
 
           <div className="mt-8 mb-3 flex items-center justify-between">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">{t('clarify.question')}</span>
-            <span className="text-[11px] text-ink-3">{t('clarify.keys')}</span>
+            <span className="hidden text-[11px] text-ink-3 md:inline">{t('clarify.keys')}</span>
           </div>
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
             {TILES.map((k, i) => (
               <Tile key={k} label={t(`clarify.kinds.${k}`)} hint={t(`clarify.kinds.${k}Hint`)} shortcut={String(i + 1)} onClick={() => choose(k)} />
             ))}
@@ -349,7 +349,7 @@ export default function ClarifyPage() {
 
           <div className="mt-6 flex items-center justify-between border-t border-line pt-4">
             <Button variant="ghost" onClick={() => choose('trash')} className="text-ink-3 hover:text-rose">
-              <Trash2 size={14} /> {t('clarify.kinds.trash')} <span className="ml-1 text-[11px] text-ink-3">6</span>
+              <Trash2 size={14} /> {t('clarify.kinds.trash')} <span className="ml-1 hidden text-[11px] text-ink-3 md:inline">6</span>
             </Button>
             <Button variant="ghost" onClick={skip}>
               {t('clarify.form.skip')}
@@ -357,7 +357,7 @@ export default function ClarifyPage() {
           </div>
         </div>
       ) : (
-        <div key={`${item.id}-form`} className="card fade-in p-7">
+        <div key={`${item.id}-form`} className="card fade-in p-4 md:p-7">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setStep('kind')} className="flex items-center gap-1 text-[13px] text-ink-3 hover:text-ink">
               <ArrowLeft size={13} /> {t('clarify.back')}
@@ -382,7 +382,7 @@ export default function ClarifyPage() {
                 </Field>
                 {projectSelect}
                 {projectId === NEW && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label={t('clarify.form.projectName')}>
                       <Input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} />
                     </Field>
@@ -401,7 +401,7 @@ export default function ClarifyPage() {
                 {moreToggle}
                 {more && (
                   <div className="fade-in flex flex-col gap-4">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <Field label={t('clarify.form.due')} hint={t('clarify.form.dueHint')}>
                         <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
                       </Field>
@@ -456,7 +456,7 @@ export default function ClarifyPage() {
                 <Field label={t('event.title')}>
                   <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
                 </Field>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <Field label={t('event.date')}>
                     <Input type="date" value={evDate} onChange={(e) => setEvDate(e.target.value)} />
                   </Field>
@@ -467,7 +467,7 @@ export default function ClarifyPage() {
                     <Input type="time" step={900} value={evEnd} onChange={(e) => setEvEnd(e.target.value)} />
                   </Field>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field label={t('event.kind')}>
                     <Select value={evKind} onChange={(e) => setEvKind(e.target.value as EventKind)}>
                       {EVENT_KINDS.map((k) => (
@@ -545,7 +545,7 @@ function Tile({
           {icon}
           {label}
         </span>
-        <span className="text-[11px] text-ink-3">{shortcut}</span>
+        <span className="hidden text-[11px] text-ink-3 md:inline">{shortcut}</span>
       </span>
       <span className="mt-1 text-[12.5px] leading-snug text-ink-2">{hint}</span>
     </button>

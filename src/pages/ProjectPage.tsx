@@ -66,7 +66,7 @@ export default function ProjectPage() {
         <TaskMeta task={task} hideProject className="mt-1" />
       </button>
       {options?.showMakeNext && task.status !== 'done' && !archived && (
-        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100" onClick={() => setTaskStatus(task.id, 'next')}>
+        <Button variant="ghost" size="sm" className="reveal opacity-0 group-hover:opacity-100" onClick={() => setTaskStatus(task.id, 'next')}>
           {t('project.makeNext')}
         </Button>
       )}
@@ -84,7 +84,7 @@ export default function ProjectPage() {
         <input
           value={project.name}
           onChange={(e) => updateProject(project.id, { name: e.target.value })}
-          className="field-bare -ml-2 w-full px-2 py-1 text-[26px] font-medium leading-tight tracking-[-0.02em]"
+          className="field-bare -ml-2 w-full px-2 py-1 text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]"
         />
       </div>
 
@@ -139,7 +139,7 @@ export default function ProjectPage() {
                 className="field-bare w-full px-2 py-1 text-[14px] disabled:opacity-70"
               />
               {!archived && (
-                <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <div className="reveal flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <IconButton label="↑" disabled={i === 0} onClick={() => moveGoal(i, -1)}>
                     <ChevronUp size={14} />
                   </IconButton>

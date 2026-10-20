@@ -9,6 +9,7 @@ import QuickCapture from './QuickCapture'
 import TaskDrawer from './TaskDrawer'
 import EventDialog from './EventDialog'
 import SyncConflictDialog from './SyncConflictDialog'
+import MobileNav from './MobileNav'
 import { Kbd, cx } from './ui'
 
 const NAV = [
@@ -81,8 +82,8 @@ export default function AppShell() {
   }, [navigate, openCapture, closeAll]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-[216px] shrink-0 flex-col border-r border-line px-4 py-7">
+    <div className="flex min-h-dvh">
+      <aside className="sticky top-0 hidden h-dvh w-[216px] shrink-0 flex-col border-r border-line px-4 py-7 md:flex">
         <div className="mb-8 flex items-center gap-2 px-2">
           <span className="inline-block h-3 w-3 rounded-full border-[2.5px] border-accent" />
           <span className="text-[15px] font-medium tracking-[-0.01em]">{t('app.name')}</span>
@@ -140,9 +141,10 @@ export default function AppShell() {
           </NavLink>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-12 py-10">
+      <main className="min-w-0 flex-1 px-4 pt-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:px-12 md:py-10">
         <Outlet />
       </main>
+      <MobileNav />
       <QuickCapture />
       <TaskDrawer />
       <EventDialog />

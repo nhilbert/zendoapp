@@ -67,7 +67,7 @@ export default function EventDialog() {
         <Field label={t('event.title')}>
           <Input autoFocus value={draft.title} onChange={(e) => set({ title: e.target.value })} />
         </Field>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label={t('event.date')}>
             <Input type="date" value={draft.date} onChange={(e) => set({ date: e.target.value })} />
           </Field>
@@ -86,7 +86,7 @@ export default function EventDialog() {
             <Checkbox checked={!!draft.private} onChange={(v) => set({ private: v })} /> {t('privacy.private')}
           </label>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('event.kind')}>
             <Select value={draft.kind} onChange={(e) => set({ kind: e.target.value as EventKind })}>
               {EVENT_KINDS.map((k) => (
@@ -109,7 +109,7 @@ export default function EventDialog() {
             </Select>
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('event.location')} hint={t('common.optional')}>
             <Input value={draft.location ?? ''} onChange={(e) => set({ location: e.target.value })} />
           </Field>

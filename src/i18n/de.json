@@ -11,7 +11,8 @@
     "projects": "Projekte",
     "board": "Board",
     "review": "Rückblick",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "more": "Mehr"
   },
   "common": {
     "add": "Hinzufügen",
@@ -236,7 +237,9 @@
     "allDay": "ganztägig",
     "dropHere": "Hier ablegen",
     "now": "jetzt",
-    "nextAction": "nächster"
+    "nextAction": "nächster",
+    "viewList": "Liste",
+    "viewTimeline": "Zeitplan"
   },
   "week": {
     "title": "Woche",
@@ -256,7 +259,10 @@
     "offDay": "frei",
     "capacityLegend": "dunkel = Termine · Farbe = geplante Arbeit, Termine des Projekts darin schattiert · hell = frei",
     "fullDay": "Tag belegt",
-    "blockIncludes": "enthält {{hours}} Termine dieses Projekts"
+    "blockIncludes": "enthält {{hours}} Termine dieses Projekts",
+    "addBlock": "½-Tag-Block hinzufügen…",
+    "block": "Block",
+    "subtitlePhone": "Grobplan für die nächsten zwei Wochen. Tippe bei einem Tag auf „Block“, um ein Projekt einzuplanen."
   },
   "event": {
     "new": "Neuer Termin",
@@ -338,12 +344,14 @@
     "shortcutGo": "dann t · w · i · c · p · b · r — Ansicht wechseln",
     "shortcutEsc": "schließen",
     "m365": "Microsoft 365",
-    "m365Hint": "Liest deinen Outlook-Kalender über den lokalen Zendo-Server, der ihn beim Start und alle 15 Minuten aktualisiert. Anmelde-Tokens bleiben in data/ auf diesem Rechner; der Browser sieht sie nie.",
+    "m365Hint": "Liest deinen Outlook-Kalender über den Zendo-Server, der ihn beim Start und alle 15 Minuten aktualisiert. Anmelde-Tokens bleiben auf dem Server; der Browser sieht sie nie.",
     "connect": "Microsoft 365 verbinden",
     "syncNow": "Jetzt synchronisieren",
     "disconnect": "Trennen",
     "connectedAs": "Verbunden als {{account}}",
     "notConnected": "Nicht verbunden.",
+    "deviceCode": "Zum Anmelden öffne",
+    "deviceCodeWait": "und gib diesen Code ein. Die Seite macht weiter, sobald du angemeldet bist.",
     "lastSync": "zuletzt {{time}}",
     "serviceDown": "Der lokale Server läuft nicht. Starte Zendo mit npm run dev (oder npm start).",
     "synced": "{{total}} Termine synchronisiert ({{kept}} bereits bekannt, {{removed}} entfernt).",

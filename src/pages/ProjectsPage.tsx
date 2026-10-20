@@ -92,7 +92,7 @@ function ProjectRow({ project, tasks, muted }: { project: Project; tasks: Task[]
   const next = nextActionOf(tasks, project.id)
   const open = openTasksOfProject(tasks, project.id).length
   return (
-      <Link to={`/projects/${project.id}`} className={`card flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2 ${muted ? 'opacity-70' : ''}`}>
+      <Link to={`/projects/${project.id}`} className={`card flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-surface-2 md:px-5 md:py-4 ${muted ? 'opacity-70' : ''}`}>
         <ProjectDot color={project.color} size={10} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
@@ -111,7 +111,7 @@ function ProjectRow({ project, tasks, muted }: { project: Project; tasks: Task[]
             ) : null}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2 text-[12px] text-ink-3">
+        <div className="hidden shrink-0 items-center gap-2 text-[12px] text-ink-3 sm:flex">
           {project.dueDate && <span>{t('projects.due', { date: rel(project.dueDate) })}</span>}
           <span className="tnum">{t('projects.open', { count: open })}</span>
         </div>

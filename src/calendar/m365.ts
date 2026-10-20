@@ -13,11 +13,24 @@ export interface M365Status {
   connected: boolean
   account: string | null
   lastSync?: string | null
+  /** Hosted server: sign-in waits for this code to be entered at verificationUri. */
+  pending?: { userCode: string; verificationUri: string; expiresAt: string } | null
+  loginError?: string | null
 }
 
 export const getStatus = () => api<M365Status>('/api/calendar/status')
 export const connect = () => api<M365Status>('/api/calendar/connect', { method: 'POST', timeoutMs: 180_000 })
 export const disconnect = () => api<M365Status>('/api/calendar/disconnect', { method: 'POST' })
+
+/** Device-code sign-in (hosted server): polls until the code has been entered and the server holds a token. */
+export async function waitForSignIn(): Promise<M365Status> {
+  for (;;) {
+    await new Promise((resolve) => window.setTimeout(resolve, 3000))
+    const status = await getStatus()
+    if (status.connected) return status
+    if (!status.pending) throw new Error(status.loginError ?? 'sign_in_failed')
+  }
+}
 
 /**
  * Asks the server to fetch the calendar and write it into the database (the server also does this

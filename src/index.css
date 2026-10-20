@@ -194,6 +194,22 @@
   }
 }
 
+/* Touch screens have no hover: controls that appear on hover are always visible there. */
+@media (hover: none) {
+  .reveal {
+    opacity: 1 !important;
+  }
+}
+
+/* iOS zooms into inputs below 16px; keep form text at 16px on phones. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

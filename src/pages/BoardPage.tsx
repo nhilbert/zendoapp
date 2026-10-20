@@ -110,7 +110,7 @@ export default function BoardPage() {
         title={t('board.title')}
         subtitle={t('board.subtitle')}
         right={
-          <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-56">
+          <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-48 md:w-56">
             <option value="">{t('board.all')}</option>
             <option value={CHORES}>{t('board.chores')}</option>
             {projects
@@ -124,21 +124,21 @@ export default function BoardPage() {
         }
       />
       <DndContext sensors={sensors} collisionDetection={boardCollision} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={() => setInd(null)}>
-        <div className="grid grid-cols-5 gap-4">
+        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-5 md:gap-4 md:overflow-visible md:px-0 md:pb-0">
           {TASK_STATUSES.map((status) => {
             const col = column(status)
             return (
               <Droppable
                 key={status}
                 id={`col:${status}`}
-                className="group/col flex min-h-[60vh] flex-col rounded-2xl bg-surface-2/60 p-2 transition-colors"
+                className="group/col flex min-h-[60vh] w-[82vw] max-w-[340px] shrink-0 snap-start flex-col rounded-2xl bg-surface-2/60 p-2 transition-colors md:w-auto md:max-w-none"
                 overClassName={indicator ? '' : 'bg-accent-soft/70'}
               >
                 <div className="mb-2 flex items-center justify-between px-2 pt-1">
                   <span className={cx('text-[12px] font-medium uppercase tracking-[0.1em]', status === 'next' ? 'text-accent' : 'text-ink-3')}>{t(`status.${status}`)}</span>
                   <span className="flex items-center gap-1">
                     {status !== 'done' && col.length > 1 && (
-                      <IconButton label={t('board.sortUrgency')} onClick={() => sortColumnByUrgency(status)} className="h-6 w-6 opacity-0 transition-opacity group-hover/col:opacity-100">
+                      <IconButton label={t('board.sortUrgency')} onClick={() => sortColumnByUrgency(status)} className="reveal h-6 w-6 opacity-0 transition-opacity group-hover/col:opacity-100">
                         <ArrowDownNarrowWide size={13} />
                       </IconButton>
                     )}

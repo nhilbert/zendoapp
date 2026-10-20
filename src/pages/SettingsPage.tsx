@@ -7,7 +7,7 @@ import { isHHMM } from '@/domain/dates'
 import { changeLocale } from '@/i18n'
 import { type AiProvider, type AiSettings, DEFAULT_MODELS, loadAiSettings, saveAiSettings } from '@/ai/settings'
 import { api } from '@/sync/api'
-import { type M365Status, NotConfigured, ServiceUnavailable, connect, disconnect, getStatus, syncCalendar } from '@/calendar/m365'
+import { type M365Status, NotConfigured, ServiceUnavailable, connect, disconnect, getStatus, syncCalendar, waitForSignIn } from '@/calendar/m365'
 import { useSync } from '@/store/useSync'
 import { PRE_SYNC_BACKUP } from '@/sync/server'
 import { useLocale } from '@/components/TaskBits'
@@ -35,7 +35,11 @@ export default function SettingsPage() {
     setM365((m) => ({ ...m, busy: true, message: undefined, error: undefined }))
     try {
       if (action === 'connect') {
-        const status = await connect()
+        let status = await connect()
+        if (status.pending) {
+          setM365((m) => ({ ...m, status }))
+          status = await waitForSignIn()
+        }
         setM365((m) => ({ ...m, status }))
         const r = await syncCalendar()
         setM365((m) => ({ ...m, status: { ...status, lastSync: r.lastSync }, message: t('settings.synced', { total: r.total, kept: r.kept, removed: r.removed }) }))
@@ -143,7 +147,7 @@ export default function SettingsPage() {
 
         <section>
           <SectionLabel>{t('settings.workday')}</SectionLabel>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('settings.start')}>
               <Input type="time" step={900} value={settings.workdayStart} onChange={timeChange('workdayStart')} />
             </Field>
@@ -154,7 +158,7 @@ export default function SettingsPage() {
               <Input type="number" min={1} max={16} step={0.5} value={settings.dayCapacityHours} onChange={(e) => updateSettings({ dayCapacityHours: Number(e.target.value) || 8 })} />
             </Field>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('settings.budgetStart')} hint={t('settings.budgetHint')}>
               <Input type="time" step={900} value={settings.budgetStart} onChange={timeChange('budgetStart')} />
             </Field>
@@ -164,7 +168,7 @@ export default function SettingsPage() {
           </div>
           <div className="mt-3">
             <div className="mb-1 text-[12px] font-medium text-ink-2">{t('settings.workDays')}</div>
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {[1, 2, 3, 4, 5, 6, 7].map((d) => (
                 <button
                   key={d}
@@ -194,6 +198,15 @@ export default function SettingsPage() {
                   <span className="text-ink-3"> · {t('settings.lastSync', { time: new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date((m365.status.lastSync ?? settings.calendar?.lastSync)!)) })}</span>
                 )}
               </span>
+            ) : m365.status?.pending ? (
+              <div className="fade-in text-ink">
+                {t('settings.deviceCode')}{' '}
+                <a href={m365.status.pending.verificationUri} target="_blank" rel="noreferrer" className="text-accent underline">
+                  {m365.status.pending.verificationUri}
+                </a>
+                <div className="my-2 select-all font-mono text-[20px] tracking-[0.2em]">{m365.status.pending.userCode}</div>
+                <span className="text-ink-3">{t('settings.deviceCodeWait')}</span>
+              </div>
             ) : (
               <span className="text-ink-3">{t('settings.notConnected')}</span>
             )}
@@ -246,7 +259,7 @@ export default function SettingsPage() {
             <details className="mt-1" open={!!ai.apiKey}>
               <summary className="cursor-pointer select-none text-[12px] text-ink-3">{t('settings.aiBrowserFallback')}</summary>
               <p className="my-3 text-[13px] text-ink-2">{t('settings.aiHint')}</p>
-          <div className="grid grid-cols-[160px_1fr] gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]">
             <Field label={t('settings.provider')}>
               <Select value={ai.provider} onChange={(e) => updateAi({ provider: e.target.value as AiProvider })}>
                 <option value="none">{t('settings.off')}</option>

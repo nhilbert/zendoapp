@@ -27,6 +27,12 @@ What stays simple:
 7. Verify: `npm run calendar:check`. A browser window opens for sign-in; the script then lists your next seven days with their show-as status and exits. Nothing is stored.
 8. Start Zendo with `npm run dev` (this also starts the local calendar service on port 5174), open Settings → Microsoft 365 → **Connect Microsoft 365**. The browser opens once for sign-in; afterwards the calendar syncs on every app start and on "Sync now". Tokens are cached in `data/msal-cache.json` (gitignored). **Disconnect** deletes the cache.
 
+## On a hosted server
+
+The same registration works when Zendo runs on a server (`ZENDO_CALENDAR_LOGIN=device`, which the Dockerfile sets). There is no browser on the server, so **Connect Microsoft 365** shows a short code instead: open the shown link (microsoft.com/devicelogin) on any device, enter the code and sign in. Settings continues by itself once you are signed in. This uses the device-code flow, which also depends on **Allow public client flows: Yes** (step 5). Tokens are cached in the server's data volume.
+
+To move an existing local connection instead, copy `data/msal-cache.json` into the server's data directory together with the database; the refresh token keeps working there.
+
 ## What Zendo reads and how it maps it
 
 - `GET /me/calendarView?startDateTime&endDateTime` for the visible range (one week back, five weeks ahead). Recurring series arrive already expanded as single occurrences.

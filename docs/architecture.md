@@ -156,6 +156,7 @@ Ignored on purpose: CalDAV (not offered by Exchange Online), EWS (blocked for ne
 | **2 – Local server + SQLite** (done) | Durable data, one-command start | Hono server on Node 24 with `node:sqlite`, migrations, repository, state/changes API, diff-based client sync with offline queue, automatic push of prototype data, daily backups, external quick capture, pre-commit guard, tests. Open: `npm start` auto-open of the browser, LAN token. |
 | **3 – Outlook calendar** (done) | Real meetings in Week and Today | Done: registration guide, `server/calendar.mjs` (MSAL loopback flow, persistent token cache, calendarView → events, free/busy, all-day expansion), Vite proxy, Settings connect/sync/disconnect, sync on app start. Periodic server-side sync every 15 minutes. Open: delta queries, ICS feed fallback. |
 | **4 – AI on the server** (started) | Clarify, project breakdown, week proposal | Done: `/api/ai/clarify` with key in `.env`, structured output, refusal fallback, privacy notice in Settings, browser key only as fallback. Open: project breakdown, week proposal, usage log. |
+| **4b – Phone layout** (done) | Usable on a phone once hosted | Bottom navigation, responsive pages, touch drag via long-press, non-drag alternatives, PWA manifest and icons. Open: offline service worker, hosting (section 11). |
 | **5 – Rhythm features** | Make the rituals smoother | Recurring chores, weekly objectives, top-3, shutdown checklist, load warning, rollover, focus mode, external capture endpoint. |
 
 ## 11. Hosting options (access from a phone, computer switched off)
@@ -164,13 +165,22 @@ The prototype keeps data in the browser, so it cannot be reached from a second d
 
 | Option | Effort | Cost | Login | Notes |
 |---|---|---|---|---|
-| **Small VPS (e.g. Hetzner, Germany) + Docker + Cloudflare Tunnel + Cloudflare Access** | ~1 h once the server exists | ~€4/month, Access free for one user | Access with Microsoft Entra login or email one-time code; the app itself needs no auth code | Data stays on a server you control in the EU; SQLite file + nightly backup. Recommended. |
+| **Small VPS (Hetzner Cloud CAX11, Germany) + Docker + Caddy + oauth2-proxy with Microsoft Entra ID** | ~1 h once the server exists | ~€7/month incl. VAT, +20 % for Hetzner backups (2026 prices) | Microsoft 365 account with MFA, checked on the server | Chosen. TLS ends on the server, so no third party sees the data in transit; one login gate serves every app under one sub-zone (`*.apps.example.com`). |
+| Small VPS + Cloudflare Tunnel + Cloudflare Access | ~1 h | VPS + Access free for one user | Access with Entra login or email one-time code | No open ports, but Cloudflare terminates TLS (sees the content) and the domain's DNS has to move to Cloudflare. |
 | Fly.io with a persistent volume | ~1 h | ~€3–5/month | Same Cloudflare Access in front, or Fly's own proxy auth | No server to maintain; volumes are single-region. |
 | Cloudflare Workers + D1 + Pages | 1–2 sessions (rewrite the server on Hono for Workers, raw OAuth instead of MSAL) | Free tier likely sufficient | Cloudflare Access | No server at all; the calendar sync becomes a Cron Trigger with a confidential-client Graph app. |
 | Tailscale to a machine at home | 30 min | Free | Tailscale identity | Requires a machine that stays on, so it does not meet the requirement. |
 | AWS Amplify (Hosting + Cognito + Amplify Data) | Several sessions | Free tier, then pay per use | Cognito | Means rewriting the data layer to Amplify's GraphQL model and moving the calendar sync into Lambda; heavy for one user and locks the data model to AWS. Not recommended. |
 
-Whichever host: keep the server container identical to the local one, bind it to a private interface and put the identity layer (Cloudflare Access or Tailscale) in front, so the app never has to implement passwords. A mobile layout (Inbox, Today, Clarify first) is a separate piece of work.
+Whichever host: keep the server container identical to the local one, bind it to a private interface and put the identity layer in front, so the app never has to implement passwords. The phone layout exists (iteration 4b); what remains for on-the-go use is the hosting itself.
+
+How the chosen setup fits together:
+
+- `Dockerfile` builds the UI and runs the same server as `npm start`, as user `node`, with data in the `/data` volume. Configuration comes from the environment (`.env.example`): `ZENDO_PUBLIC_URL` is the public address, whose host and origin pass the API guard next to loopback; `ZENDO_HOST=0.0.0.0` binds inside the container, which publishes no port; `ZENDO_CALENDAR_LOGIN=device` replaces the browser sign-in with a device code (`docs/outlook-setup.md`).
+- Caddy terminates TLS (Let's Encrypt) and asks oauth2-proxy (`forward_auth`) on every request; unauthenticated page loads are redirected to the Microsoft sign-in, API calls get 401. oauth2-proxy uses its own confidential Entra app registration with one redirect URI on `auth.apps.example.com`, a session cookie for `.apps.example.com`, and an allow-list of e-mail addresses. Zendo's own registration stays a public client without a secret.
+- The x-zendo header check stays in place behind the proxy, so a foreign site still cannot drive the API with the user's cookie.
+- Backups: Zendo's daily `VACUUM INTO` copies in the data volume, plus Hetzner's daily server backups (7 kept). Moving data in: stop the container, copy a consistent copy of `zendo.db` (and `msal-cache.json`) into the volume, start again; then use only the hosted address, so there is one source of truth.
+- The server-specific files (cloud-init, Caddyfile, compose files, deploy script) live outside this public repo because they name the domain and account.
 
 ## 12. Running the prototype
 

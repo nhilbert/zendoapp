@@ -12,6 +12,18 @@ export interface CalendarConfig {
   tenantId?: string
   timezone: string
   dataDir: string
+  /**
+   * 'browser': loopback sign-in in a browser window on this machine (local use).
+   * 'device': the server shows a code to enter at microsoft.com/devicelogin (hosted, no browser on the server;
+   * needs "Allow public client flows" in the app registration).
+   */
+  login: 'browser' | 'device'
+}
+
+export interface DeviceLogin {
+  userCode: string
+  verificationUri: string
+  expiresAt: string
 }
 
 const SCOPES = ['Calendars.Read']
@@ -122,6 +134,38 @@ export function calendarService(cfg: CalendarConfig, repo: Repo): CalendarServic
     return { ...result, account: token.account?.username ?? null, lastSync }
   }
 
+  // Device-code sign-in: /connect answers as soon as Microsoft hands out the code; the browser then polls
+  // /status while the sign-in finishes here in the background.
+  let deviceLogin: DeviceLogin | null = null
+  let loginError: string | null = null
+  const activeDeviceLogin = () => (deviceLogin && Date.parse(deviceLogin.expiresAt) > Date.now() ? deviceLogin : null)
+  const startDeviceLogin = () =>
+    new Promise<DeviceLogin>((resolve, reject) => {
+      const active = activeDeviceLogin()
+      if (active) return resolve(active)
+      loginError = null
+      pca
+        .acquireTokenByDeviceCode({
+          scopes: SCOPES,
+          deviceCodeCallback: (r) => {
+            deviceLogin = { userCode: r.userCode, verificationUri: r.verificationUri, expiresAt: new Date(Date.now() + r.expiresIn * 1000).toISOString() }
+            console.log(`Microsoft 365 sign-in: ${r.message}`)
+            resolve(deviceLogin)
+          },
+        })
+        .then(async (result) => {
+          deviceLogin = null
+          console.log(`Microsoft 365 connected as ${result?.account?.username}`)
+          await syncNow().catch((err) => console.error('Calendar: first sync failed:', (err as Error).message))
+        })
+        .catch((err) => {
+          deviceLogin = null
+          loginError = (err as { errorCode?: string })?.errorCode || (err as Error)?.message || 'sign_in_failed'
+          console.error('Microsoft 365 sign-in failed:', (err as Error)?.message ?? err)
+          reject(err)
+        })
+    })
+
   app.onError((err, c) => {
     const message = err.message ?? String(err)
     console.error('Calendar error:', message)
@@ -130,10 +174,17 @@ export function calendarService(cfg: CalendarConfig, repo: Repo): CalendarServic
 
   app.get('/status', async (c) => {
     const account = await getAccount()
-    return c.json({ connected: !!account, account: account?.username ?? null, lastSync: repo.getMeta('calendar_last_sync') ?? null })
+    return c.json({
+      connected: !!account,
+      account: account?.username ?? null,
+      lastSync: repo.getMeta('calendar_last_sync') ?? null,
+      pending: account ? null : activeDeviceLogin(),
+      loginError: account ? null : loginError,
+    })
   })
   app.post('/sync', async (c) => c.json(await syncNow()))
   app.post('/connect', async (c) => {
+    if (cfg.login === 'device') return c.json({ connected: false, account: null, pending: await startDeviceLogin() })
     const result = await getToken(true)
     console.log(`Microsoft 365 connected as ${result.account?.username}`)
     const synced = await syncNow().catch((err) => {

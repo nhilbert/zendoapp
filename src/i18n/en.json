@@ -11,7 +11,8 @@
     "projects": "Projects",
     "board": "Board",
     "review": "Review",
-    "settings": "Settings"
+    "settings": "Settings",
+    "more": "More"
   },
   "common": {
     "add": "Add",
@@ -236,7 +237,9 @@
     "allDay": "all day",
     "dropHere": "Drop here",
     "now": "now",
-    "nextAction": "next"
+    "nextAction": "next",
+    "viewList": "List",
+    "viewTimeline": "Timeline"
   },
   "week": {
     "title": "Week",
@@ -256,7 +259,10 @@
     "offDay": "day off",
     "capacityLegend": "dark = meetings · colour = planned work, with the project’s own meetings shaded inside · light = free",
     "fullDay": "day blocked",
-    "blockIncludes": "includes {{hours}} of this project’s meetings"
+    "blockIncludes": "includes {{hours}} of this project’s meetings",
+    "addBlock": "Add a ½-day block…",
+    "block": "Block",
+    "subtitlePhone": "Rough plan for the next two weeks. Tap “Block” on a day to plan a project."
   },
   "event": {
     "new": "New meeting",
@@ -338,12 +344,14 @@
     "shortcutGo": "then t · w · i · c · p · b · r — go to view",
     "shortcutEsc": "close",
     "m365": "Microsoft 365",
-    "m365Hint": "Reads your Outlook calendar through the local Zendo server, which refreshes it at start and every 15 minutes while running. Sign-in tokens stay in data/ on this machine; the browser never sees them.",
+    "m365Hint": "Reads your Outlook calendar through the Zendo server, which refreshes it at start and every 15 minutes while running. Sign-in tokens stay on the server; the browser never sees them.",
     "connect": "Connect Microsoft 365",
     "syncNow": "Sync now",
     "disconnect": "Disconnect",
     "connectedAs": "Connected as {{account}}",
     "notConnected": "Not connected.",
+    "deviceCode": "To sign in, open",
+    "deviceCodeWait": "and enter this code. This page continues once you are signed in.",
     "lastSync": "last sync {{time}}",
     "serviceDown": "The local server is not running. Start Zendo with npm run dev (or npm start).",
     "synced": "{{total}} events synced ({{kept}} already known, {{removed}} removed).",

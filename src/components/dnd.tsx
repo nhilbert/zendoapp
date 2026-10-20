@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import {
   type CollisionDetection,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   pointerWithin,
   rectIntersection,
   useDraggable,
@@ -12,8 +13,13 @@ import {
 } from '@dnd-kit/core'
 import { cx } from './ui'
 
+/** Mouse: drag after 6 px. Touch: press and hold 250 ms, so a normal swipe still scrolls. */
 export function useDndSensors() {
-  return useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor))
+  return useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  )
 }
 
 /** Pointer-precise where possible, rectangle overlap as fallback. */
@@ -44,7 +50,7 @@ export function Draggable({
       {...listeners}
       {...attributes}
       onClick={onClick}
-      className={cx('touch-none', isDragging && 'opacity-40', !disabled && 'cursor-grab active:cursor-grabbing', className)}
+      className={cx('touch-manipulation select-none [-webkit-touch-callout:none]', isDragging && 'opacity-40', !disabled && 'cursor-grab active:cursor-grabbing', className)}
     >
       {children}
     </div>

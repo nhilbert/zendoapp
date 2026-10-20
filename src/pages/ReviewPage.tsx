@@ -256,7 +256,7 @@ function Weekly({ monday, setMonday }: { monday: string; setMonday: (d: string) 
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
         <div>
           <SectionLabel>{t('review.noNextAction')}</SectionLabel>
           {missing.length === 0 ? (

@@ -74,7 +74,7 @@ export default function TaskDrawer() {
         <label className="flex items-center gap-2 text-[13px] text-ink-2">
           <Checkbox checked={!!task.private} onChange={(v) => updateTask(task.id, { private: v })} /> {t('privacy.task')}
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('task.priority')}>
             <div>
               <Segmented<Priority>
@@ -102,7 +102,7 @@ export default function TaskDrawer() {
             </Select>
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('task.due')}>
             <Input type="date" value={task.dueDate ?? ''} onChange={(e) => updateTask(task.id, { dueDate: e.target.value || undefined })} />
           </Field>

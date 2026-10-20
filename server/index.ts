@@ -1,6 +1,7 @@
 /**
  * Zendo server – one local process: JSON API + SQLite + Microsoft 365 calendar +
- * (after `npm run build`) the web UI itself. Binds to 127.0.0.1 only.
+ * (after `npm run build`) the web UI itself. Binds to 127.0.0.1 unless ZENDO_HOST says otherwise
+ * (0.0.0.0 inside the container, which is reachable only through the reverse proxy).
  *
  *   npm run dev    Vite dev server (UI) + this server (API)
  *   npm start      this server serving dist/ on http://127.0.0.1:5174
@@ -18,6 +19,9 @@ import { aiRoutes, resolveAi, type AiProviderName } from './ai.ts'
 if (existsSync('.env')) process.loadEnvFile('.env')
 
 const PORT = Number(process.env.ZENDO_PORT || 5174)
+const HOST = process.env.ZENDO_HOST || '127.0.0.1'
+// Hosted behind a reverse proxy: the public address, e.g. https://zendo.example.com (see docs/architecture.md, Hosting).
+const PUBLIC_URL = process.env.ZENDO_PUBLIC_URL?.trim() ? new URL(process.env.ZENDO_PUBLIC_URL.trim()) : undefined
 const DATA_DIR = process.env.ZENDO_DATA_DIR || 'data'
 const DB_FILE = path.join(DATA_DIR, 'zendo.db')
 const DIST = 'dist'
@@ -36,6 +40,7 @@ const calendar = calendarService(
     tenantId: process.env.MS_TENANT_ID?.trim(),
     timezone: process.env.MS_TIMEZONE || 'W. Europe Standard Time',
     dataDir: DATA_DIR,
+    login: process.env.ZENDO_CALENDAR_LOGIN === 'device' ? 'device' : 'browser',
   },
   repo,
 )
@@ -48,10 +53,10 @@ const ai = resolveAi({
   openaiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
 })
 const hasUi = existsSync(path.join(DIST, 'index.html'))
-const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), staticDir: hasUi ? DIST : undefined })
+const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL })
 
-const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: PORT }, () => {
-  console.log(`Zendo server on http://127.0.0.1:${PORT} · database ${DB_FILE}${backup ? ` · backup ${backup}` : ''}`)
+const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, () => {
+  console.log(`Zendo server on http://${HOST}:${PORT}${PUBLIC_URL ? ` (public ${PUBLIC_URL.origin})` : ''} · database ${DB_FILE}${backup ? ` · backup ${backup}` : ''}`)
   if (!hasUi) console.log('No dist/ build found: serving the API only (fine with npm run dev; run npm run build for npm start).')
   if (!process.env.MS_CLIENT_ID) console.log('Microsoft 365 not configured (no .env) – calendar routes answer 503, everything else works.')
   console.log(ai ? `AI: ${ai.provider} · ${ai.model}` : 'AI: not configured (add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env)')

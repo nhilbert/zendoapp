@@ -12,13 +12,15 @@ export interface AppOptions {
   ai?: Hono
   /** Directory with the built client (dist). When set, the server serves the UI too. */
   staticDir?: string
+  /** Public address when hosted behind a reverse proxy (ZENDO_PUBLIC_URL); its host and origin pass the guard. */
+  publicUrl?: URL
 }
 
-export function createApp({ repo, calendar, ai, staticDir }: AppOptions): Hono {
+export function createApp({ repo, calendar, ai, staticDir, publicUrl }: AppOptions): Hono {
   const app = new Hono()
 
   app.get('/api/health', (c) => c.json({ ok: true, version: STORE_VERSION, initialized: repo.isInitialized() }))
-  app.use('/api/*', guard)
+  app.use('/api/*', guard(publicUrl))
   app.onError((err, c) => {
     if (err instanceof BadRequest) return c.json({ error: err.message }, 400)
     console.error('API error:', err)

@@ -12,7 +12,7 @@ import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
-import { Button, IconButton, PageHeader, cx } from '@/components/ui'
+import { Button, IconButton, PageHeader, cx, useIsPhone } from '@/components/ui'
 import { ProjectDot, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 
 const CHORES = 'chores'
@@ -34,6 +34,7 @@ export default function WeekPage() {
   const projectMap = useProjectMap()
   const sensors = useDndSensors()
   const activeProjects = projects.filter((p) => p.status === 'active')
+  const isPhone = useIsPhone()
 
   const onDragStart = (e: DragStartEvent) => {
     const id = String(e.active.id)
@@ -60,7 +61,7 @@ export default function WeekPage() {
     <div>
       <PageHeader
         title={t('week.title')}
-        subtitle={t('week.subtitle')}
+        subtitle={isPhone ? t('week.subtitlePhone') : t('week.subtitle')}
         right={
           <>
             <Button variant="ghost" size="sm" onClick={() => setOffset(0)} disabled={offset === 0}>
@@ -77,7 +78,8 @@ export default function WeekPage() {
       />
 
       <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="mb-6 flex flex-wrap items-center gap-2">
+        {/* Drag palette: desktop only – on phones each day has a "Block" picker instead. */}
+        <div className="mb-6 hidden flex-wrap items-center gap-2 md:flex">
           <span className="mr-2 text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">{t('week.palette')}</span>
           {activeProjects.map((p) => (
             <Draggable key={p.id} id={`proj:${p.id}`}>
@@ -89,7 +91,7 @@ export default function WeekPage() {
           </Draggable>
         </div>
 
-        <div className="grid grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
           {weeks.map((days) => (
             <section key={days[0]}>
               <h2 className="mb-3 text-[13px] font-medium text-ink-2">{weekTitle(days)}</h2>
@@ -177,7 +179,7 @@ function BlockChip({
             onRemove()
           }}
           onPointerDown={(e) => e.stopPropagation()}
-          className="rounded-full p-0.5 text-ink-3 opacity-0 hover:text-ink group-hover/blk:opacity-100"
+          className="reveal rounded-full p-0.5 text-ink-3 opacity-0 hover:text-ink group-hover/blk:opacity-100"
           aria-label={t('common.remove')}
         >
           <X size={11} />
@@ -197,8 +199,10 @@ function DayRow({ date, today }: { date: ISODate; today: ISODate }) {
   const settings = useStore((s) => s.settings)
   const updateBlock = useStore((s) => s.updateBlock)
   const removeBlock = useStore((s) => s.removeBlock)
+  const addBlock = useStore((s) => s.addBlock)
   const openEvent = useUi((s) => s.openEvent)
   const projectMap = useProjectMap()
+  const activeProjects = projects.filter((p) => p.status === 'active')
 
   const cap = dayCapacity(date, settings, events, blocks, tasks)
   const dayEvents = eventsOn(events, date)
@@ -237,7 +241,27 @@ function DayRow({ date, today }: { date: ISODate; today: ISODate }) {
             <span className={cx('tnum shrink-0 text-[11px]', over ? 'text-amber' : 'text-ink-3')}>
               {!cap.isWorkDay ? t('week.offDay') : over ? t('week.overplanned') : cap.fullDay ? t('week.fullDay') : t('week.free', { hours: fmtHours(cap.freeMinutes, locale) })}
             </span>
-            <button type="button" onClick={() => openEvent(null, { date })} className="text-ink-3 opacity-0 transition-opacity hover:text-ink group-hover:opacity-100" aria-label={t('week.addMeeting')}>
+            {/* Non-drag way to add a block: works on phones and with the keyboard. */}
+            <label className="reveal relative text-ink-3 opacity-0 transition-opacity hover:text-ink focus-within:opacity-100 group-hover:opacity-100" title={t('week.addBlock')}>
+              <span className="sr-only">{t('week.addBlock')}</span>
+              <span aria-hidden className="flex h-5 items-center rounded-full border border-line px-1.5 text-[10px] uppercase tracking-wide">{t('week.block')}</span>
+              <select
+                className="absolute inset-0 cursor-pointer opacity-0"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) addBlock(date, e.target.value === CHORES ? null : e.target.value, 0.5)
+                }}
+              >
+                <option value="">{t('week.addBlock')}</option>
+                {activeProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+                <option value={CHORES}>{t('week.chores')}</option>
+              </select>
+            </label>
+            <button type="button" onClick={() => openEvent(null, { date })} className="reveal text-ink-3 opacity-0 transition-opacity hover:text-ink group-hover:opacity-100" aria-label={t('week.addMeeting')}>
               <Plus size={14} />
             </button>
           </div>

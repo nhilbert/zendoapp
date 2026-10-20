@@ -1,4 +1,4 @@
-import { type ComponentProps, type ReactNode, useEffect } from 'react'
+import { type ComponentProps, type ReactNode, useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -118,9 +118,9 @@ export function Kbd({ children }: { children: ReactNode }) {
 
 export function PageHeader({ title, subtitle, right }: { title: ReactNode; subtitle?: ReactNode; right?: ReactNode }) {
   return (
-    <header className="mb-8 flex items-end justify-between gap-6">
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 md:mb-8">
       <div className="min-w-0">
-        <h1 className="text-[26px] font-medium leading-tight tracking-[-0.02em]">{title}</h1>
+        <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{title}</h1>
         {subtitle && <p className="mt-1 text-[14px] text-ink-2">{subtitle}</p>}
       </div>
       {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
@@ -191,7 +191,7 @@ export function Segmented<T extends string>({
   )
 }
 
-export function Modal({ open, onClose, children, width = 'max-w-lg', top = 'pt-[12vh]' }: { open: boolean; onClose: () => void; children: ReactNode; width?: string; top?: string }) {
+export function Modal({ open, onClose, children, width = 'max-w-lg', top = 'pt-4 md:pt-[12vh]' }: { open: boolean; onClose: () => void; children: ReactNode; width?: string; top?: string }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -203,7 +203,7 @@ export function Modal({ open, onClose, children, width = 'max-w-lg', top = 'pt-[
   if (!open) return null
   return (
     <div className={cx('fixed inset-0 z-50 flex items-start justify-center bg-ink/15 px-4 backdrop-blur-[2px]', top)} onMouseDown={onClose}>
-      <div className={cx('card fade-in w-full p-5 shadow-[var(--shadow)]', width)} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={cx('card fade-in max-h-[calc(100dvh-2rem)] w-full overflow-y-auto p-5 shadow-[var(--shadow)]', width)} onMouseDown={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -215,7 +215,7 @@ export function Drawer({ open, onClose, children }: { open: boolean; onClose: ()
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>
       <aside
-        className="fade-in absolute inset-y-0 right-0 w-[440px] max-w-full overflow-y-auto border-l border-line bg-surface p-6 shadow-[var(--shadow)]"
+        className="fade-in absolute inset-y-0 right-0 w-full overflow-y-auto border-l border-line bg-surface p-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-[var(--shadow)] md:w-[440px] md:p-6"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {children}
@@ -223,3 +223,19 @@ export function Drawer({ open, onClose, children }: { open: boolean; onClose: ()
     </div>
   )
 }
+
+/** True while the media query matches (e.g. useMediaQuery('(max-width: 767px)') for phones). */
+export function useMediaQuery(query: string): boolean {
+  const get = () => typeof window !== 'undefined' && window.matchMedia(query).matches
+  const [matches, setMatches] = useState(get)
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const on = () => setMatches(mq.matches)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [query])
+  return matches
+}
+
+export const useIsPhone = () => useMediaQuery('(max-width: 767px)')
