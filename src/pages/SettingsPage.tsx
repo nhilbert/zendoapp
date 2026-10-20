@@ -292,6 +292,11 @@ export default function SettingsPage() {
           </p>
           <input ref={jsonRef} type="file" accept="application/json" className="hidden" onChange={(e) => e.target.files?.[0] && onJson(e.target.files[0])} />
           <div className="flex flex-wrap gap-2">
+            {syncState.status === 'signin' && (
+              <Button variant="primary" onClick={() => window.location.reload()}>
+                {t('sync.signinShort')}
+              </Button>
+            )}
             <Button onClick={download}>{t('settings.export')}</Button>
             <Button onClick={() => jsonRef.current?.click()}>{t('settings.import')}</Button>
             {jsonMsg && <span className={cx('fade-in self-center text-[12px]', jsonMsg.ok ? 'text-accent' : 'text-rose')}>{jsonMsg.text}</span>}

@@ -2,7 +2,7 @@ import type { CalendarEvent, InboxItem, PlanBlock, Project, Review, Settings, Ta
 import { useStore, type DataSnapshot } from '@/store/useStore'
 import { useSync, type Counts } from '@/store/useSync'
 import { looksLikeSample } from '@/domain/sample'
-import { NotConfigured, ServiceUnavailable, api } from './api'
+import { NotConfigured, ServiceUnavailable, SignInRequired, api } from './api'
 
 /**
  * Keeps the Zustand store and the local server in step.
@@ -67,6 +67,64 @@ export function diffCollections(prev: Collections, next: Collections): Changes |
   return any ? { upserts, deletes } : null
 }
 
+/** Pending changes merged per record: the latest upsert or delete of an id wins. */
+interface Queue {
+  upserts: Map<Col, Map<string, Identified>>
+  deletes: Map<Col, Set<string>>
+  settings?: Settings
+}
+const newQueue = (): Queue => ({ upserts: new Map(), deletes: new Map(), settings: undefined })
+const countQueue = (q: Queue) => [...q.upserts.values()].reduce((n, m) => n + m.size, 0) + [...q.deletes.values()].reduce((n, s) => n + s.size, 0) + (q.settings ? 1 : 0)
+function addToQueue(q: Queue, ch: Changes): void {
+  for (const c of COLLECTIONS) {
+    for (const item of ch.upserts?.[c] ?? []) {
+      if (!q.upserts.has(c)) q.upserts.set(c, new Map())
+      q.upserts.get(c)!.set(item.id, item)
+      q.deletes.get(c)?.delete(item.id)
+    }
+    for (const id of ch.deletes?.[c] ?? []) {
+      if (!q.deletes.has(c)) q.deletes.set(c, new Set())
+      q.deletes.get(c)!.add(id)
+      q.upserts.get(c)?.delete(id)
+    }
+  }
+  if (ch.settings) q.settings = ch.settings
+}
+function queueToChanges(q: Queue): Changes | null {
+  if (!countQueue(q)) return null
+  const out: Changes = { upserts: {}, deletes: {} }
+  for (const [c, m] of q.upserts) if (m.size) out.upserts[c] = [...m.values()]
+  for (const [c, s] of q.deletes) if (s.size) out.deletes[c] = [...s]
+  if (q.settings) out.settings = q.settings
+  return out
+}
+
+/** Stored pending changes, keeping only well-formed entries (records with a string id, string ids to delete). */
+export function readPending(raw: string | null): Changes {
+  const out: Changes = { upserts: {}, deletes: {} }
+  let saved: Partial<Changes> | null = null
+  try {
+    saved = raw ? (JSON.parse(raw) as Partial<Changes>) : null
+  } catch {
+    return out
+  }
+  if (!saved || typeof saved !== 'object') return out
+  for (const c of COLLECTIONS) {
+    const ups = saved.upserts?.[c]
+    if (Array.isArray(ups)) {
+      const ok = ups.filter((x): x is Identified => !!x && typeof x === 'object' && typeof (x as Identified).id === 'string')
+      if (ok.length) out.upserts[c] = ok
+    }
+    const dels = saved.deletes?.[c]
+    if (Array.isArray(dels)) {
+      const ok = dels.filter((id): id is string => typeof id === 'string')
+      if (ok.length) out.deletes[c] = ok
+    }
+  }
+  if (saved.settings && typeof saved.settings === 'object') out.settings = saved.settings
+  return out
+}
+
 const RETRY_MS = [2000, 5000, 15000, 30000]
 const DEBOUNCE_MS = 300
 /** Set once this browser has agreed with the server; from then on the server wins on start. */
@@ -75,6 +133,8 @@ export const FLAG_SYNCED = 'zendo.synced'
 export const FLAG_FRESH = 'zendo.fresh'
 /** A copy of this browser's data taken before the first sync decision – downloadable from Settings. */
 export const PRE_SYNC_BACKUP = 'zendo.pre-sync-backup'
+/** Changes the server has not confirmed yet (offline, expired sign-in); kept across reloads and sent first on start. */
+export const PENDING_CHANGES = 'zendo.pending-changes'
 
 const storage = {
   get: (k: string) => {
@@ -119,33 +179,37 @@ export function startSync(): () => void {
   let retries = 0
   let lastChangedAt: string | null = null
   let stopped = false
-  const queue = { upserts: new Map<Col, Map<string, Identified>>(), deletes: new Map<Col, Set<string>>(), settings: undefined as Settings | undefined }
+  const queue = newQueue()
+  let inflight: Changes | null = null // taken from the queue, sent, not yet confirmed
 
-  const queued = () => [...queue.upserts.values()].reduce((n, m) => n + m.size, 0) + [...queue.deletes.values()].reduce((n, s) => n + s.size, 0) + (queue.settings ? 1 : 0)
+  const queued = () => countQueue(queue)
+
+  /** Mirror of everything unconfirmed (in flight + queued) in browser storage, so a reload cannot lose it. */
+  const persistPending = () => {
+    const all = newQueue()
+    if (inflight) addToQueue(all, inflight)
+    const rest = queueToChanges(queue)
+    if (rest) addToQueue(all, rest)
+    const pending = queueToChanges(all)
+    if (pending) storage.set(PENDING_CHANGES, JSON.stringify(pending))
+    else storage.remove(PENDING_CHANGES)
+  }
 
   const enqueue = (ch: Changes) => {
-    for (const c of COLLECTIONS) {
-      for (const item of ch.upserts[c] ?? []) {
-        if (!queue.upserts.has(c)) queue.upserts.set(c, new Map())
-        queue.upserts.get(c)!.set(item.id, item)
-        queue.deletes.get(c)?.delete(item.id)
-      }
-      for (const id of ch.deletes[c] ?? []) {
-        if (!queue.deletes.has(c)) queue.deletes.set(c, new Set())
-        queue.deletes.get(c)!.add(id)
-        queue.upserts.get(c)?.delete(id)
-      }
-    }
-    if (ch.settings) queue.settings = ch.settings
+    addToQueue(queue, ch)
+    persistPending()
     sync({ pending: queued() })
   }
 
+  const clearQueue = () => {
+    queue.upserts.clear()
+    queue.deletes.clear()
+    queue.settings = undefined
+    persistPending()
+  }
+
   const takeQueue = (): Changes | null => {
-    if (!queued()) return null
-    const out: Changes = { upserts: {}, deletes: {} }
-    for (const [c, m] of queue.upserts) if (m.size) out.upserts[c] = [...m.values()]
-    for (const [c, s] of queue.deletes) if (s.size) out.deletes[c] = [...s]
-    if (queue.settings) out.settings = queue.settings
+    const out = queueToChanges(queue)
     queue.upserts.clear()
     queue.deletes.clear()
     queue.settings = undefined
@@ -175,7 +239,13 @@ export function startSync(): () => void {
   const snapshot = (): DataSnapshot => useStore.getState().exportData()
 
   const fail = (err: unknown) => {
-    const status = err instanceof ServiceUnavailable || err instanceof NotConfigured ? (useSync.getState().status === 'online' || useSync.getState().status === 'offline' ? 'offline' : 'local') : useSync.getState().status
+    const current = useSync.getState().status
+    const status =
+      err instanceof SignInRequired
+        ? 'signin'
+        : err instanceof ServiceUnavailable || err instanceof NotConfigured
+          ? current === 'online' || current === 'offline' || current === 'signin' ? 'offline' : 'local'
+          : current
     sync({ status, message: err instanceof Error ? err.message : String(err), pending: queued() })
     scheduleRetry()
   }
@@ -195,17 +265,23 @@ export function startSync(): () => void {
       if (needsFullPush) {
         await api('/api/state', { method: 'PUT', body: JSON.stringify(snapshot()) })
         needsFullPush = false
-        queue.upserts.clear()
-        queue.deletes.clear()
-        queue.settings = undefined
+        clearQueue()
       }
       const ch = takeQueue()
       if (ch) {
+        inflight = ch
         try {
           const r = await api<{ changedAt: string }>('/api/changes', { method: 'POST', body: JSON.stringify(ch) })
           lastChangedAt = r.changedAt
+          inflight = null
+          persistPending()
         } catch (err) {
-          enqueue(ch) // keep for the next attempt
+          // Keep for the next attempt, behind anything changed meanwhile (newer edits of the same record win).
+          const newer = takeQueue()
+          addToQueue(queue, ch)
+          if (newer) addToQueue(queue, newer)
+          inflight = null
+          persistPending()
           throw err
         }
       }
@@ -239,9 +315,7 @@ export function startSync(): () => void {
   }
   const pushLocal = async () => {
     await api('/api/state', { method: 'PUT', body: JSON.stringify(snapshot()) })
-    queue.upserts.clear()
-    queue.deletes.clear()
-    queue.settings = undefined
+    clearQueue()
     needsFullPush = false
   }
   const agreed = () => {
@@ -264,7 +338,10 @@ export function startSync(): () => void {
             resolver = null
             try {
               if (choice === 'browser') await pushLocal()
-              else applyServerState(await api<ServerState>('/api/state'))
+              else {
+                applyServerState(await api<ServerState>('/api/state'))
+                clearQueue() // the user chose the server's data; this browser's unsent changes are dropped
+              }
               agreed()
               retries = 0
               sync({ status: 'online', lastSync: new Date().toISOString(), pending: 0, message: undefined, conflict: undefined })
@@ -276,9 +353,13 @@ export function startSync(): () => void {
           sync({ status: 'conflict', conflict: { local: counts(useStore.getState()), server: counts(server) } })
           return
         }
-        if (queued() || needsFullPush) await flush()
-        const fresh = queued() ? await api<ServerState>('/api/state') : server
-        applyServerState(fresh)
+        // Unsent changes (e.g. from before a reload) go out first; then the server state, which now includes them.
+        const hadPending = queued() > 0 || needsFullPush
+        if (hadPending) {
+          await flush()
+          if (queued() || needsFullPush) throw useSync.getState().status === 'signin' ? new SignInRequired() : new ServiceUnavailable()
+        }
+        applyServerState(hadPending ? await api<ServerState>('/api/state') : server)
       } else {
         await pushLocal()
       }
@@ -286,7 +367,7 @@ export function startSync(): () => void {
       retries = 0
       sync({ status: 'online', lastSync: new Date().toISOString(), pending: queued(), message: undefined })
     } catch (err) {
-      sync({ status: 'local', message: err instanceof Error ? err.message : String(err) })
+      sync({ status: err instanceof SignInRequired ? 'signin' : 'local', message: err instanceof Error ? err.message : String(err) })
       window.clearTimeout(timer)
       timer = window.setTimeout(() => void handshake(), 15000)
     }
@@ -297,8 +378,13 @@ export function startSync(): () => void {
     try {
       const server = await api<ServerState>('/api/state', { timeoutMs: 5000 })
       if (server.initialized && server.changedAt !== lastChangedAt) applyServerState(server)
-    } catch {
-      /* ignore – next change will surface the problem */
+    } catch (err) {
+      // An expired sign-in is shown right away (before the next edit); other problems surface with the next change.
+      if (err instanceof SignInRequired) {
+        sync({ status: 'signin', message: err.message })
+        window.clearTimeout(timer)
+        timer = window.setTimeout(() => void handshake(), 15000)
+      }
     }
   }
 
@@ -326,6 +412,10 @@ export function startSync(): () => void {
       void flush()
     },
   })
+
+  // Changes the server never confirmed before the last reload go out first (handshake → flush).
+  addToQueue(queue, readPending(storage.get(PENDING_CHANGES)))
+  sync({ pending: queued() })
 
   refresher = refresh
   const onFocus = () => void refresh()

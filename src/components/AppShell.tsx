@@ -111,6 +111,11 @@ export default function AppShell() {
               {t(`sync.${syncStatus}Short`)}
             </NavLink>
           )}
+          {syncStatus === 'signin' && (
+            <button type="button" onClick={() => window.location.reload()} title={t('sync.signin')} className="text-left text-[12px] text-amber hover:underline">
+              {t('sync.signinShort')}
+            </button>
+          )}
           <button
             type="button"
             onClick={togglePrivate}

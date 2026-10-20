@@ -9,6 +9,12 @@ export class NotConfigured extends Error {
     super('not_configured')
   }
 }
+/** Hosted behind a login: the proxy answers API calls with 401 login_required once the session has expired. */
+export class SignInRequired extends Error {
+  constructor() {
+    super('login_required')
+  }
+}
 
 export async function api<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const controller = new AbortController()
@@ -25,6 +31,7 @@ export async function api<T>(path: string, init?: RequestInit & { timeoutMs?: nu
   if (res.status === 502 || res.status === 504) throw new ServiceUnavailable()
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
+    if (res.status === 401 && body.error === 'login_required') throw new SignInRequired()
     if (res.status === 503 && body.error === 'not_configured') throw new NotConfigured()
     if (res.status === 503) throw new ServiceUnavailable()
     throw new Error(body.error ?? `${res.status} ${res.statusText}`)

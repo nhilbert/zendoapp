@@ -7,8 +7,9 @@ import { create } from 'zustand'
  *  offline    – server was reachable before and is not now; changes queue up
  *  local      – server never reached this session; data lives in this browser only
  *  conflict   – this browser holds data that differs from the server; the user decides which side to keep
+ *  signin     – hosted: the login in front of the server has expired; changes queue up until a reload signs in again
  */
-export type SyncStatus = 'connecting' | 'online' | 'offline' | 'local' | 'conflict'
+export type SyncStatus = 'connecting' | 'online' | 'offline' | 'local' | 'conflict' | 'signin'
 
 export interface Counts {
   projects: number

@@ -58,6 +58,11 @@ export default function MobileNav() {
             {(syncStatus === 'offline' || syncStatus === 'local' || syncStatus === 'conflict') && (
               <p className="px-3 pt-2 text-[13px] text-amber">{t(`sync.${syncStatus}Short`)}</p>
             )}
+            {syncStatus === 'signin' && (
+              <button type="button" onClick={() => window.location.reload()} className="w-full px-3 pt-2 text-left text-[13px] text-amber">
+                {t('sync.signinShort')}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -82,7 +87,7 @@ export default function MobileNav() {
         <button type="button" onClick={() => setMoreOpen((o) => !o)} className={tab(inMore || moreOpen)}>
           <MoreHorizontal size={20} strokeWidth={1.75} />
           {t('nav.more')}
-          {(syncStatus === 'offline' || syncStatus === 'local' || syncStatus === 'conflict') && <span className="sr-only">{t(`sync.${syncStatus}Short`)}</span>}
+          {(syncStatus === 'offline' || syncStatus === 'local' || syncStatus === 'conflict' || syncStatus === 'signin') && <span className="sr-only">{t(`sync.${syncStatus}Short`)}</span>}
         </button>
       </nav>
     </>

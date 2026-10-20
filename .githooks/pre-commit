@@ -1,7 +1,7 @@
 #!/bin/sh
 # Zendo pre-commit guard: this repository is public. Refuse private files and anything that looks like a secret.
 staged=$(git diff --cached --name-only --diff-filter=ACMR)
-bad=$(printf '%s\n' "$staged" | grep -E '^data/|(^|/)\.env$|\.ics$|msal-cache|\.db$' )
+bad=$(printf '%s\n' "$staged" | grep -E '^data/|(^|/)\.env$|\.ics$|msal-cache|\.db$|\.db-(journal|wal|shm)$|\.sqlite3?$' )
 if [ -n "$bad" ]; then
   printf 'Refusing to commit private files:\n%s\n' "$bad"
   exit 1
