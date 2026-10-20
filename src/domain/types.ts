@@ -154,6 +154,8 @@ export interface CalendarEvent {
 
 export type BlockSize = 0.25 | 0.5 | 0.75 | 1
 export const BLOCK_SIZES: BlockSize[] = [0.25, 0.5, 0.75, 1]
+/** Share of the day as shown on block chips (Week) and block rows (Today). */
+export const BLOCK_SIZE_LABEL: Record<BlockSize, string> = { 0.25: '¼', 0.5: '½', 0.75: '¾', 1: '1' }
 
 export interface PlanBlock {
   id: string

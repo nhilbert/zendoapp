@@ -3,10 +3,10 @@ import { Link, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Video } from 'lucide-react'
-import type { ISODate, Task } from '@/domain/types'
+import { BLOCK_SIZE_LABEL, type ISODate, type PlanBlock, type Task } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
 import { addDaysISO, addMinutes, durationMinutes, fmtDate, fmtHours, fmtTime, hhmmToMinutes, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
-import { candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, projectsWithoutNextAction, safeTimes, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
+import { type DayCapacity, blocksOn, candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, projectsWithoutNextAction, safeTimes, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
@@ -205,6 +205,8 @@ export default function TodayPage() {
 
           {/* Plan & candidates */}
           <aside className={cx('min-h-0 flex-col gap-8 pb-4 md:flex md:overflow-y-auto md:pr-1', phoneView === 'plan' ? 'flex' : 'hidden')}>
+            <DayBlocks blocks={blocksOn(blocks, date)} cap={cap} dayCapacityHours={settings.dayCapacityHours} />
+
             <div>
               <SectionLabel>{t('today.plan')}</SectionLabel>
               <Droppable id="untimed" className="min-h-[56px] rounded-xl transition-colors" overClassName="bg-accent-soft/60">
@@ -283,6 +285,58 @@ export default function TodayPage() {
         </div>
         <DragOverlay dropAnimation={null}>{activeTask ? <PlanRow task={activeTask} overlay /> : null}</DragOverlay>
       </DndContext>
+    </div>
+  )
+}
+
+/** The day's blocks from the week plan: which projects (or chores) the day is reserved for, and how much. */
+function DayBlocks({ blocks, cap, dayCapacityHours }: { blocks: PlanBlock[]; cap: DayCapacity; dayCapacityHours: number }) {
+  const { t } = useTranslation()
+  const locale = useLocale()
+  const projectMap = useProjectMap()
+  if (blocks.length === 0 && !cap.isWorkDay) return null
+  return (
+    <div>
+      <SectionLabel>{t('today.blocks')}</SectionLabel>
+      {blocks.length === 0 ? (
+        <p className="px-1 text-[13px] text-ink-3">
+          {t('today.noBlocks')}{' '}
+          <Link to="/week" className="whitespace-nowrap text-ink-2 hover:text-ink">
+            {t('today.planWeek')} →
+          </Link>
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {blocks.map((b) => {
+            const project = b.projectId ? (projectMap.get(b.projectId) ?? null) : null
+            const info = cap.blocks.find((x) => x.id === b.id)
+            const minutes = info?.minutes ?? b.size * dayCapacityHours * 60
+            const name = project ? project.name : t('week.chores')
+            return (
+              <li key={b.id} style={projectVars(project?.color ?? null)} className="pc-soft rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 text-[13.5px] text-ink">
+                  <ProjectDot color={project?.color ?? null} size={7} />
+                  {project ? (
+                    <Link to={`/projects/${project.id}`} className="min-w-0 flex-1 truncate hover:underline">
+                      {name}
+                    </Link>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate">{name}</span>
+                  )}
+                  <span className="tnum shrink-0 text-[12px] text-ink-2">
+                    {BLOCK_SIZE_LABEL[b.size]} · {fmtHours(minutes, locale)}
+                  </span>
+                </div>
+                {(b.note || (info && info.meetingMinutes > 0)) && (
+                  <div className="mt-0.5 pl-[15px] text-[12px] leading-snug text-ink-3">
+                    {[b.note, info && info.meetingMinutes > 0 ? t('week.blockIncludes', { hours: fmtHours(info.meetingMinutes, locale) }) : null].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }

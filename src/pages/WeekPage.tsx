@@ -3,9 +3,9 @@ import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Video, X } from 'lucide-react'
-import type { BlockSize, ISODate, PlanBlock, Project } from '@/domain/types'
+import type { ISODate, PlanBlock, Project } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
-import { BLOCK_SIZES } from '@/domain/types'
+import { BLOCK_SIZES, BLOCK_SIZE_LABEL } from '@/domain/types'
 import { addDaysISO, fmtDate, fmtHours, fmtTime, fmtWeekday, isoWeekNumber, rangeISO, startOfWeekISO, todayISO } from '@/domain/dates'
 import { blocksOn, dayCapacity, eventsOn, isBlocking, tasksDueOn } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
@@ -16,7 +16,6 @@ import { Button, IconButton, PageHeader, cx, useIsPhone } from '@/components/ui'
 import { ProjectDot, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 
 const CHORES = 'chores'
-const SIZE_LABEL: Record<BlockSize, string> = { 0.25: '¼', 0.5: '½', 0.75: '¾', 1: '1' }
 
 export default function WeekPage() {
   const { t } = useTranslation()
@@ -168,7 +167,7 @@ function BlockChip({
         className="tnum rounded-full px-1.5 font-medium hover:bg-surface"
         title={t('week.clickToResize')}
       >
-        {SIZE_LABEL[block.size]}
+        {BLOCK_SIZE_LABEL[block.size]}
         {exceeds && <span className="tnum ml-1 text-ink-2">· {fmtHours(absorbed.minutes, locale)}</span>}
       </button>
       {onRemove && (
