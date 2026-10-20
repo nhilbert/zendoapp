@@ -425,9 +425,10 @@ function EventBlock({ event, top, h, px }: { event: VisibleEvent; top: number; h
         project ? 'pc-line' : 'border-ink-3',
       )}
     >
-      <button type="button" onClick={() => !event.masked && openEvent(event.id)} className={cx('h-full w-full px-2 py-1 text-left', canJoin && 'pr-[72px]')}>
+      <button type="button" onClick={() => !event.masked && openEvent(event.id)} className={cx('h-full w-full px-2 py-1 text-left', canJoin && 'pr-8 md:pr-[72px]')}>
         <div className="flex items-center gap-1 truncate text-[12.5px] leading-tight text-ink">
-          {event.kind === 'online' ? <Video size={11} className="shrink-0 text-ink-3" /> : <MapPin size={11} className="shrink-0 text-ink-3" />}
+          {/* on phones the Join icon already says "online": its room goes to the title */}
+          {event.kind === 'online' ? <Video size={11} className={cx('shrink-0 text-ink-3', canJoin && 'hidden md:block')} /> : <MapPin size={11} className="shrink-0 text-ink-3" />}
           <span className={cx('truncate', event.masked && 'italic text-ink-3')}>{event.title}</span>
           {event.private && <Lock size={10} className="ml-1 shrink-0 text-ink-3" />}
           {!isBlocking(event) && <span className="ml-1 shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
@@ -439,7 +440,7 @@ function EventBlock({ event, top, h, px }: { event: VisibleEvent; top: number; h
         )}
       </button>
       {/* vertically centred like the block's text */}
-      <JoinLink event={event} className="absolute right-1 top-1/2 -translate-y-1/2" />
+      <JoinLink event={event} iconOnPhone className="absolute right-1 top-1/2 -translate-y-1/2" />
     </div>
   )
 }

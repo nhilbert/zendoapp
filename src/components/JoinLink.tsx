@@ -7,8 +7,11 @@ import { cx } from './ui'
 /** Phones and tablets open web meeting links in the installed app themselves; computers get the app link directly. */
 const APP_LINKS = typeof navigator !== 'undefined' && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 
-/** One click into the online meeting, as in Outlook. Nothing without a link or for a masked (private, hidden) event. */
-export function JoinLink({ event, className }: { event: Pick<VisibleEvent, 'joinUrl' | 'location' | 'masked'>; className?: string }) {
+/**
+ * One click into the online meeting, as in Outlook. Nothing without a link or for a masked (private, hidden) event.
+ * `iconOnPhone`: in tight rows on phones only a round video icon (24px, WCAG 2.5.8) so the title stays readable; the label from md up.
+ */
+export function JoinLink({ event, className, iconOnPhone }: { event: Pick<VisibleEvent, 'joinUrl' | 'location' | 'masked'>; className?: string; iconOnPhone?: boolean }) {
   const { t } = useTranslation()
   const url = event.masked ? undefined : joinUrlOf(event)
   if (!url) return null
@@ -23,12 +26,17 @@ export function JoinLink({ event, className }: { event: Pick<VisibleEvent, 'join
       target={web ? '_blank' : undefined}
       rel={web ? 'noopener noreferrer' : undefined}
       title={title}
+      aria-label={title}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
-      className={cx('inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 text-[11px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-accent-ink', className)}
+      className={cx(
+        'inline-flex shrink-0 items-center justify-center gap-1 rounded-full bg-accent-soft text-[11px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-accent-ink',
+        iconOnPhone ? 'h-6 w-6 md:h-5 md:w-auto md:px-2' : 'h-5 px-2',
+        className,
+      )}
     >
-      <Video size={11} />
-      {t('event.join')}
+      <Video size={iconOnPhone ? 13 : 11} aria-hidden className={iconOnPhone ? 'md:h-[11px] md:w-[11px]' : undefined} />
+      <span className={iconOnPhone ? 'hidden md:inline' : undefined}>{t('event.join')}</span>
     </a>
   )
 }
