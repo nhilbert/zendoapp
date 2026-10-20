@@ -57,7 +57,7 @@ export function ProjectMeetings({ project, readOnly }: { project: Project; readO
                   {e.seriesId && <Repeat size={11} className="shrink-0 text-ink-3" aria-label={t('event.recurring')} />}
                 </span>
               </button>
-              <JoinLink event={e} />
+              <JoinLink event={e} iconOnPhone />
             </li>
           ))}
         </ul>
