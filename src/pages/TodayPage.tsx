@@ -416,6 +416,9 @@ function EventBlock({ event, top, h, px }: { event: VisibleEvent; top: number; h
   const openEvent = useUi((s) => s.openEvent)
   const project = event.projectId && !event.masked ? projectMap.get(event.projectId) : null
   const canJoin = !event.masked && !!joinUrlOf(event)
+  const showTime = h >= px * 1.5
+  // as many title lines as the block holds (padding 8px, title line 15.6px, time row 16px); one line truncates
+  const titleLines = Math.max(1, Math.floor((h - 2 - 8 - (showTime ? 16 : 0)) / 15.6))
   return (
     <div
       style={{ top, height: h - 2, ...projectVars(project?.color ?? null) }}
@@ -426,15 +429,24 @@ function EventBlock({ event, top, h, px }: { event: VisibleEvent; top: number; h
       )}
     >
       <button type="button" onClick={() => !event.masked && openEvent(event.id)} className={cx('h-full w-full px-2 py-1 text-left', canJoin && 'pr-8 md:pr-[72px]')}>
-        <div className="flex items-center gap-1 truncate text-[12.5px] leading-tight text-ink">
+        <div className={cx('flex gap-1 overflow-hidden text-[12.5px] leading-tight text-ink', titleLines > 1 ? 'items-start' : 'items-center')}>
           {/* on phones the Join icon already says "online": its room goes to the title */}
-          {event.kind === 'online' ? <Video size={11} className={cx('shrink-0 text-ink-3', canJoin && 'hidden md:block')} /> : <MapPin size={11} className="shrink-0 text-ink-3" />}
-          <span className={cx('truncate', event.masked && 'italic text-ink-3')}>{event.title}</span>
-          {event.private && <Lock size={10} className="ml-1 shrink-0 text-ink-3" />}
+          {event.kind === 'online' ? (
+            <Video size={11} className={cx('shrink-0 text-ink-3', titleLines > 1 && 'mt-[2px]', canJoin && 'hidden md:block')} />
+          ) : (
+            <MapPin size={11} className={cx('shrink-0 text-ink-3', titleLines > 1 && 'mt-[2px]')} />
+          )}
+          <span
+            className={cx(titleLines > 1 ? 'min-w-0 break-words' : 'truncate', event.masked && 'italic text-ink-3')}
+            style={titleLines > 1 ? { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: titleLines, overflow: 'hidden' } : undefined}
+          >
+            {event.title}
+          </span>
+          {event.private && <Lock size={10} className={cx('ml-1 shrink-0 text-ink-3', titleLines > 1 && 'mt-[2px]')} />}
           {!isBlocking(event) && <span className="ml-1 shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{t('event.freeTag')}</span>}
         </div>
-        {h >= px * 1.5 && (
-          <div className="tnum mt-0.5 text-[11px] text-ink-3">
+        {showTime && (
+          <div className="tnum mt-0.5 text-[11px] leading-tight text-ink-3">
             {fmtTime(event.start, locale)}–{fmtTime(event.end, locale)}
           </div>
         )}
