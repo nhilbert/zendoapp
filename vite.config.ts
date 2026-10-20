@@ -16,7 +16,7 @@ export default defineConfig({
     strictPort: false,
     open: false,
     // The local calendar service (server/calendar.mjs) answers /api/*; in production the Zendo server will.
-    proxy: { '/api': { target: 'http://127.0.0.1:5174', changeOrigin: false } },
+    proxy: { '/api': { target: `http://127.0.0.1:${process.env.ZENDO_PORT || 5174}`, changeOrigin: false } },
   },
   preview: { host: '127.0.0.1', port: 4173 },
 })

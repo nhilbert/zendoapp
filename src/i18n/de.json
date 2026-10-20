@@ -322,7 +322,7 @@
     "apiKey": "API-Schlüssel",
     "model": "Modell",
     "data": "Daten",
-    "dataHint": "Alle Daten liegen im lokalen Speicher dieses Browsers auf diesem Rechner. Regelmäßig exportieren.",
+    "dataHint": "Der lokale Server speichert alles in einer SQLite-Datei auf diesem Rechner. Exportiere jederzeit eine JSON-Kopie.",
     "export": "JSON exportieren",
     "import": "JSON importieren",
     "sample": "Beispieldaten laden",
@@ -334,14 +334,14 @@
     "shortcutGo": "dann t · w · i · c · p · b · r — Ansicht wechseln",
     "shortcutEsc": "schließen",
     "m365": "Microsoft 365",
-    "m365Hint": "Liest deinen Outlook-Kalender über den lokalen Kalenderdienst (startet mit npm run dev). Anmelde-Tokens bleiben in data/ auf diesem Rechner; der Browser sieht sie nie. Der Kalender wird bei jedem Start von Zendo aktualisiert.",
+    "m365Hint": "Liest deinen Outlook-Kalender über den lokalen Zendo-Server. Anmelde-Tokens bleiben in data/ auf diesem Rechner; der Browser sieht sie nie. Der Kalender wird bei jedem Start von Zendo aktualisiert.",
     "connect": "Microsoft 365 verbinden",
     "syncNow": "Jetzt synchronisieren",
     "disconnect": "Trennen",
     "connectedAs": "Verbunden als {{account}}",
     "notConnected": "Nicht verbunden.",
     "lastSync": "zuletzt {{time}}",
-    "serviceDown": "Der Kalenderdienst läuft nicht. Starte Zendo mit npm run dev (braucht eine .env, siehe docs/outlook-setup.md).",
+    "serviceDown": "Der lokale Server läuft nicht. Starte Zendo mit npm run dev (oder npm start).",
     "synced": "{{total}} Termine synchronisiert ({{kept}} bereits bekannt, {{removed}} entfernt).",
     "shortcutPrivate": "Privates aus-/einblenden",
     "budgetStart": "Termine zählen ab",
@@ -349,7 +349,8 @@
     "budgetHint": "außerhalb (z. B. abends) verringern Termine das Tagesbudget nicht",
     "importConfirm": "Alle aktuellen Daten durch den Inhalt dieser Datei ersetzen?",
     "importDone": "Daten importiert.",
-    "importInvalid": "Diese Datei ist kein Zendo-Export. Es wurde nichts geändert."
+    "importInvalid": "Diese Datei ist kein Zendo-Export. Es wurde nichts geändert.",
+    "m365NotConfigured": "Microsoft 365 ist nicht konfiguriert: MS_CLIENT_ID und MS_TENANT_ID in .env eintragen (siehe docs/outlook-setup.md) und neu starten."
   },
   "weekday": {
     "1": "Mo",
@@ -382,5 +383,15 @@
     "hidden": "Privates ausgeblendet",
     "visible": "Privates sichtbar",
     "privateEvent": "Privater Termin"
+  },
+  "sync": {
+    "connecting": "Verbinde mit dem lokalen Server…",
+    "online": "Gespeichert auf diesem Rechner in data/zendo.db (tägliche Sicherungen in data/backups).",
+    "offline": "Der lokale Server ist nicht erreichbar. Änderungen bleiben in diesem Browser und werden gesendet, sobald er wieder da ist.",
+    "local": "Läuft ohne den lokalen Server: Daten liegen nur in diesem Browser. Starte Zendo mit npm run dev oder npm start.",
+    "offlineShort": "Server nicht erreichbar – Änderungen warten",
+    "localShort": "Kein Server – nur Browser",
+    "lastSync": "zuletzt {{time}}",
+    "pending": "{{count}} Änderungen warten"
   }
 }

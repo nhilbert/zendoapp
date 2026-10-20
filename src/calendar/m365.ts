@@ -1,42 +1,23 @@
 import type { CalendarEvent } from '@/domain/types'
 import { addDaysISO, startOfWeekISO, todayISO } from '@/domain/dates'
 import { useStore } from '@/store/useStore'
+import { api } from '@/sync/api'
+
+export { NotConfigured, ServiceUnavailable } from '@/sync/api'
 
 /**
- * Client for the local calendar service (server/calendar.mjs), reached through the
- * Vite proxy at /api/calendar/*. The service owns the Microsoft 365 token cache;
- * the browser never sees tokens.
+ * Client for the calendar routes of the local Zendo server (server/calendar.ts),
+ * reached through the Vite proxy in dev. The server owns the Microsoft 365 token
+ * cache; the browser never sees tokens.
  */
 export interface M365Status {
   connected: boolean
   account: string | null
 }
 
-export class ServiceUnavailable extends Error {
-  constructor() {
-    super('service_unavailable')
-  }
-}
-
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response
-  try {
-    res = await fetch(path, { ...init, headers: { ...(init?.headers ?? {}), 'x-zendo': '1' } })
-  } catch {
-    throw new ServiceUnavailable()
-  }
-  // 502/503/504 come from the Vite proxy when the service is not running; a 500 is a real error with a message.
-  if (res.status === 502 || res.status === 503 || res.status === 504) throw new ServiceUnavailable()
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(body.error ?? `${res.status} ${res.statusText}`)
-  }
-  return (await res.json()) as T
-}
-
-export const getStatus = () => call<M365Status>('/api/calendar/status')
-export const connect = () => call<M365Status>('/api/calendar/connect', { method: 'POST' })
-export const disconnect = () => call<M365Status>('/api/calendar/disconnect', { method: 'POST' })
+export const getStatus = () => api<M365Status>('/api/calendar/status')
+export const connect = () => api<M365Status>('/api/calendar/connect', { method: 'POST', timeoutMs: 180_000 })
+export const disconnect = () => api<M365Status>('/api/calendar/disconnect', { method: 'POST' })
 
 /** Sync range: last week … five weeks ahead (covers the two-week plan and the review). */
 export function syncRange(): { from: string; to: string } {
@@ -46,7 +27,7 @@ export function syncRange(): { from: string; to: string } {
 
 export async function syncCalendar(): Promise<{ total: number; kept: number; removed: number; account: string | null }> {
   const { from, to } = syncRange()
-  const data = await call<{ events: Omit<CalendarEvent, 'id'>[]; account: string | null }>(`/api/calendar/events?from=${from}&to=${to}`)
+  const data = await api<{ events: Omit<CalendarEvent, 'id'>[]; account: string | null }>(`/api/calendar/events?from=${from}&to=${to}`, { timeoutMs: 60_000 })
   const store = useStore.getState()
   const result = store.importEvents(
     data.events.map((e) => ({ ...e, id: crypto.randomUUID() })),

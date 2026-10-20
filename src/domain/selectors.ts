@@ -1,6 +1,6 @@
-import type { BlockSize, CalendarEvent, ISODate, PlanBlock, Project, Settings, Task } from './types'
-import { DEFAULT_SETTINGS } from './types'
-import { compareISO, daysBetween, durationMinutes, hhmmToMinutes, isHHMM, isoWeekday, toISODate } from './dates'
+import type { BlockSize, CalendarEvent, ISODate, PlanBlock, Project, Settings, Task } from './types.ts'
+import { DEFAULT_SETTINGS } from './types.ts'
+import { compareISO, daysBetween, durationMinutes, hhmmToMinutes, isHHMM, isoWeekday, toISODate } from './dates.ts'
 
 /** Settings with any malformed time replaced by its default, so capacity never turns into NaN. */
 export function safeTimes(settings: Settings): Settings {

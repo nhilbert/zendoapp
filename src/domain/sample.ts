@@ -1,5 +1,5 @@
-import type { CalendarEvent, InboxItem, Locale, PlanBlock, Project, Review, Task } from './types'
-import { addDaysISO, startOfWeekISO, todayISO } from './dates'
+import type { CalendarEvent, InboxItem, Locale, PlanBlock, Project, Review, Task } from './types.ts'
+import { addDaysISO, startOfWeekISO, todayISO } from './dates.ts'
 
 /**
  * FICTIONAL sample data so the prototype can be explored immediately.

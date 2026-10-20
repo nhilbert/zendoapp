@@ -6,7 +6,8 @@ import { useStore } from '@/store/useStore'
 import { isHHMM } from '@/domain/dates'
 import { changeLocale } from '@/i18n'
 import { type AiProvider, type AiSettings, DEFAULT_MODELS, loadAiSettings, saveAiSettings } from '@/ai/settings'
-import { type M365Status, ServiceUnavailable, connect, disconnect, getStatus, syncCalendar } from '@/calendar/m365'
+import { type M365Status, NotConfigured, ServiceUnavailable, connect, disconnect, getStatus, syncCalendar } from '@/calendar/m365'
+import { useSync } from '@/store/useSync'
 import { useLocale } from '@/components/TaskBits'
 import { Button, Field, Input, Kbd, PageHeader, SectionLabel, Segmented, Select, cx } from '@/components/ui'
 
@@ -21,11 +22,12 @@ export default function SettingsPage() {
   const importData = useStore((s) => s.importData)
   const [icsMsg, setIcsMsg] = useState('')
   const locale = useLocale()
-  const [m365, setM365] = useState<{ status?: M365Status; busy: boolean; message?: string; error?: string; down?: boolean }>({ busy: false })
+  const [m365, setM365] = useState<{ status?: M365Status; busy: boolean; message?: string; error?: string; down?: boolean; unconfigured?: boolean }>({ busy: false })
+  const syncState = useSync()
   useEffect(() => {
     getStatus()
       .then((status) => setM365((m) => ({ ...m, status, down: false })))
-      .catch((e) => setM365((m) => ({ ...m, down: e instanceof ServiceUnavailable, error: e instanceof ServiceUnavailable ? undefined : String(e.message) })))
+      .catch((e) => setM365((m) => ({ ...m, down: e instanceof ServiceUnavailable, unconfigured: e instanceof NotConfigured, error: e instanceof ServiceUnavailable || e instanceof NotConfigured ? undefined : String(e.message) })))
   }, [])
   const m365Action = async (action: 'connect' | 'sync' | 'disconnect') => {
     setM365((m) => ({ ...m, busy: true, message: undefined, error: undefined }))
@@ -44,7 +46,7 @@ export default function SettingsPage() {
         setM365((m) => ({ ...m, status, message: undefined }))
       }
     } catch (e) {
-      setM365((m) => ({ ...m, down: e instanceof ServiceUnavailable, error: e instanceof ServiceUnavailable ? t('settings.serviceDown') : String((e as Error).message) }))
+      setM365((m) => ({ ...m, down: e instanceof ServiceUnavailable, unconfigured: e instanceof NotConfigured, error: e instanceof ServiceUnavailable ? t('settings.serviceDown') : e instanceof NotConfigured ? t('settings.m365NotConfigured') : String((e as Error).message) }))
     } finally {
       setM365((m) => ({ ...m, busy: false }))
     }
@@ -168,6 +170,8 @@ export default function SettingsPage() {
           <div className="mb-3 text-[13px]">
             {m365.down ? (
               <span className="text-amber">{t('settings.serviceDown')}</span>
+            ) : m365.unconfigured ? (
+              <span className="text-ink-3">{t('settings.m365NotConfigured')}</span>
             ) : m365.status?.connected ? (
               <span className="text-ink">
                 {t('settings.connectedAs', { account: m365.status.account ?? '' })}
@@ -181,7 +185,7 @@ export default function SettingsPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {!m365.status?.connected && (
-              <Button variant="primary" disabled={m365.busy || m365.down} onClick={() => void m365Action('connect')}>
+              <Button variant="primary" disabled={m365.busy || m365.down || m365.unconfigured} onClick={() => void m365Action('connect')}>
                 {t('settings.connect')}
               </Button>
             )}
@@ -232,7 +236,14 @@ export default function SettingsPage() {
 
         <section>
           <SectionLabel>{t('settings.data')}</SectionLabel>
-          <p className="mb-3 text-[13px] text-ink-2">{t('settings.dataHint')}</p>
+          <p className="mb-2 text-[13px] text-ink-2">{t('settings.dataHint')}</p>
+          <p className={cx('mb-3 text-[13px]', syncState.status === 'online' ? 'text-ink-2' : syncState.status === 'connecting' ? 'text-ink-3' : 'text-amber')}>
+            {t(`sync.${syncState.status}`)}
+            {syncState.lastSync && syncState.status === 'online' && (
+              <span className="text-ink-3"> · {t('sync.lastSync', { time: new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(new Date(syncState.lastSync)) })}</span>
+            )}
+            {syncState.pending > 0 && <span className="text-ink-3"> · {t('sync.pending', { count: syncState.pending })}</span>}
+          </p>
           <input ref={jsonRef} type="file" accept="application/json" className="hidden" onChange={(e) => e.target.files?.[0] && onJson(e.target.files[0])} />
           <div className="flex flex-wrap gap-2">
             <Button onClick={download}>{t('settings.export')}</Button>

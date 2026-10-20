@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { BookOpen, CalendarRange, Columns3, Eye, EyeOff, Folder, Inbox, ListChecks, Settings, Sun } from 'lucide-react'
 import { useUi } from '@/store/useUi'
 import { useStore } from '@/store/useStore'
+import { useSync } from '@/store/useSync'
 import { syncCalendar } from '@/calendar/m365'
 import QuickCapture from './QuickCapture'
 import TaskDrawer from './TaskDrawer'
@@ -34,6 +35,7 @@ export default function AppShell() {
   const closeAll = useUi((s) => s.closeAll)
   const connectedAccount = useStore((s) => s.settings.calendar?.account)
   const hidePrivate = useStore((s) => !!s.settings.hidePrivate)
+  const syncStatus = useSync((s) => s.status)
   const updateSettings = useStore((s) => s.updateSettings)
   const togglePrivate = () => updateSettings({ hidePrivate: !useStore.getState().settings.hidePrivate })
 
@@ -109,6 +111,11 @@ export default function AppShell() {
           ))}
         </nav>
         <div className="mt-auto flex flex-col gap-3 px-2.5">
+          {(syncStatus === 'offline' || syncStatus === 'local') && (
+            <NavLink to="/settings" className="text-[12px] text-amber hover:underline">
+              {t(`sync.${syncStatus}Short`)}
+            </NavLink>
+          )}
           <button
             type="button"
             onClick={togglePrivate}

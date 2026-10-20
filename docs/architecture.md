@@ -1,14 +1,14 @@
 # Zendo – Plan and architecture
 
-Status 2026-10-19. The first prototype (iteration 0) is a client-only React app with browser storage, built to validate the design. This document describes the target architecture of the local web application and the path from the prototype to it.
+Status 2026-10-20. Iteration 2 is implemented: one local Node process (Hono + SQLite) is the source of truth, the React client syncs with it. This document describes the architecture and what remains.
 
 ## 1. Decisions in brief
 
 | # | Decision | Why |
 |---|---|---|
 | D1 | **Single local process**: one Node.js server on `127.0.0.1` serves the built frontend and a JSON API. | One command to start, nothing exposed to the network, simplest possible operations for a single user. |
-| D2 | **SQLite file** in `data/zendo.db` as the system of record, with daily rotating backups in `data/backups/`. | Durable, inspectable, trivially backed up; no database server. |
-| D3 | **Frontend stays the prototype's stack** (React 19, TypeScript, Vite, Tailwind v4 tokens, Zustand, dnd-kit, i18next). The store's actions become API calls; components do not change. | The prototype already separates domain, store and UI; the design work carries over unchanged. |
+| D2 | **SQLite file** in `data/zendo.db` as the system of record (Node's built-in `node:sqlite`, no native build), with daily rotating backups in `data/backups/`. Rows store each record as JSON with generated columns for indexed fields (ADR-1 below). | Durable, inspectable, trivially backed up; no database server. |
+| D3 | **Frontend stays the prototype's stack** (React 19, TypeScript, Vite, Tailwind v4 tokens, Zustand, dnd-kit, i18next). The store stays in memory; a sync layer diffs every change into upserts/deletes for the server (ADR-2). Components did not change. | The prototype already separates domain, store and UI; the design work carries over unchanged. |
 | D4 | **Microsoft 365 calendar via Microsoft Graph on the server** (`@azure/msal-node`, auth code + PKCE, loopback redirect, delegated `Calendars.Read`). Published-ICS feed as a fallback. | Research shows Graph is the only robust route (expanded recurrences, no CORS, encrypted token cache); EWS is being retired and ICS feeds truncate series. |
 | D5 | **AI calls run on the server** with the official SDKs (`@anthropic-ai/sdk`, `openai`), key in `.env`/local secret store, never in the browser. | Keeps keys out of browser storage and lets the server add context (projects, calendar) without shipping it to the client. The prototype's browser-direct call is a stand-in. |
 | D6 | **All user-facing strings in translation files**; locale-aware formatting through `Intl`. | Multilingual from the start, German default for the owner, English for the repository. |
@@ -39,7 +39,15 @@ Status 2026-10-19. The first prototype (iteration 0) is a client-only React app 
 - **Frontend:** the current `src/` tree, built with Vite into `dist/` and served by the server in production; in development `vite` proxies `/api` to the server.
 - **Jobs:** calendar sync every 15 minutes and on demand; backup once per day at first start; both in-process (no cron).
 
-## 3. Repository layout (target)
+### ADR-1 · JSON rows with generated columns
+
+Each collection (inbox items, projects, tasks, events, plan blocks, reviews) is a table with `id`, `data` (the record as JSON) and `updated_at`, plus generated, indexed columns for the fields worth querying (status, project, dates, source). This keeps one definition of each record (the TypeScript type), makes migrations a matter of transforming JSON (the same `migratePersisted` the client uses), and still allows SQL queries and backups per row. A fully normalised schema can be introduced per table later without changing the API.
+
+### ADR-2 · Diff-based sync instead of per-action endpoints
+
+The client store remains the in-memory working copy; a sync module subscribes to it, diffs each collection by record reference, and posts `{ upserts, deletes, settings }` to `POST /api/changes` (debounced, merged, retried while offline). On start the client fetches `GET /api/state`; if the server has data it wins, otherwise the local data is pushed with `PUT /api/state` (this is how prototype data migrated). On window focus the client refreshes when the server's `changedAt` changed. Last write wins, which is adequate for one user. The browser cache (zustand persist) stays as an offline fallback.
+
+## 3. Repository layout
 
 ```
 zendoapp/
@@ -51,11 +59,16 @@ zendoapp/
 │  ├─ ai/                   provider settings (prototype: direct calls)
 │  ├─ components/           shell, primitives, task bits, dnd wrappers
 │  └─ pages/                Inbox, Clarify, Today, Week, Projects, Board, Review, Settings
-├─ server/                  (iteration 2) Hono app, routes, repositories, jobs
+├─ server/                  Hono app on Node 24 (TypeScript, run directly by Node)
 │  ├─ db/migrations/        0001_init.sql …
-│  ├─ routes/               inbox, tasks, projects, events, blocks, reviews, settings, ai, calendar
-│  ├─ integrations/         graph.ts (MSAL + calendarView), ics.ts, anthropic.ts, openai.ts
-│  └─ index.ts
+│  ├─ db.ts                 open database, run migrations, transactions
+│  ├─ repo.ts               load state, apply changes, replace all, validation
+│  ├─ app.ts                routes: /api/health, /api/state, /api/changes, /api/inbox, /api/calendar/*, static UI
+│  ├─ calendar.ts           Microsoft 365 (MSAL loopback + PKCE, calendarView)
+│  ├─ graph-map.ts          Graph → events mapping (pure)
+│  ├─ backup.ts             daily VACUUM INTO data/backups/
+│  └─ index.ts              entry point
+├─ src/sync/                client: api wrapper, diff-based sync with offline queue
 ├─ data/                    gitignored: zendo.db, backups/, msal-cache.json
 ├─ .env.example             CLIENT_ID, TENANT_ID, ANTHROPIC_API_KEY, OPENAI_API_KEY (values empty)
 └─ package.json             workspaces or two scripts (dev:web, dev:server)
@@ -88,26 +101,20 @@ Invariants (enforced in the store today, in the server tomorrow):
 11. Meeting time counts against the day only within `settings.budgetStart … budgetEnd` (default 07:00–19:00).
 12. `task.order` is the user's manual order within a status column (renumbered in steps of 1000 on every drop); `sortTasks` orders by status then `order`; `urgencyComparator(today)` (due within 14 days → undated → far-off) is applied only on request.
 
-## 5. API sketch (iteration 2)
+## 5. API (implemented)
 
-All JSON, all under `/api`, no auth (loopback only; an optional static token can be added for people who run it on a LAN).
+All JSON under `/api`, loopback only. Every request must carry the header `x-zendo: 1` and come from a loopback host/origin (cross-site pages cannot add the header without a CORS preflight, which the server never grants).
 
 | Method & path | Purpose |
 |---|---|
-| `GET /api/state` | Full snapshot for app start (same shape as the JSON export). |
-| `POST /api/inbox` · `PATCH/DELETE /api/inbox/:id` | Capture, edit, remove. `POST` also serves external capture (CLI, bookmarklet). |
-| `POST /api/inbox/:id/clarify` | Transactional: creates task/project/event and removes the item. |
-| `GET/POST /api/tasks` · `PATCH/DELETE /api/tasks/:id` · `POST /api/tasks/:id/notes` · `POST /api/tasks/:id/status` | Tasks; status endpoint applies the next-action invariant. |
-| `GET/POST /api/projects` · `PATCH/DELETE /api/projects/:id` | Projects. |
-| `GET /api/events?from&to` · `POST/PATCH/DELETE /api/events` | Manual events; synced ones are read-only except `kind` and `projectId`. |
-| `POST /api/calendar/connect` · `POST /api/calendar/sync` · `GET /api/calendar/status` | Graph login (opens browser), manual sync, status. |
-| `GET/POST/PATCH/DELETE /api/blocks` | Plan blocks. |
-| `PUT /api/reviews/:kind/:date` | Journal upsert. |
-| `GET/PATCH /api/settings` | Settings. |
-| `POST /api/ai/clarify` · `POST /api/ai/plan-week` · `POST /api/ai/project-actions` | AI features; the server builds the prompt from the database. |
-| `GET /api/export` · `POST /api/import` | Backup/restore. |
+| `GET /api/health` | Liveness, schema version, whether the database holds data. No header needed. |
+| `GET /api/state` | Full snapshot (same shape as the JSON export) plus `initialized` and `changedAt`. |
+| `PUT /api/state` | Replace everything (migrated to the current schema first). Used for the first push of local data and for JSON imports. |
+| `POST /api/changes` | `{ upserts: {col: records[]}, deletes: {col: ids[]}, settings? }` applied in one transaction. |
+| `POST /api/inbox` | Quick capture from outside the app: `{ text }`. |
+| `GET /api/calendar/status` · `POST /api/calendar/connect` · `POST /api/calendar/disconnect` · `GET /api/calendar/events?from&to` | Microsoft 365: status, interactive sign-in (opens the browser), sign-out, calendarView mapped to Zendo events. 503 `not_configured` without an app registration. |
 
-The frontend keeps its Zustand store as a cache: actions call the API optimistically and reconcile on error; the snapshot is reloaded on window focus. With one user and one browser there is no conflict resolution to design.
+Planned: `POST /api/ai/*` (server-side AI with the key in `.env`), a server-side periodic calendar sync, `GET /api/export`.
 
 ## 6. Calendar integration design (Microsoft 365)
 
@@ -145,7 +152,7 @@ Ignored on purpose: CalDAV (not offered by Exchange Online), EWS (blocked for ne
 |---|---|---|
 | **0 – Prototype (done)** | Validate design and flows | Client-only app, localStorage, sample data, de/en, DnD on Board/Week/Today, ICS file import, AI clarify (browser-direct). |
 | **1 – Feedback round** | Adjust the design to the owner's feedback; answer open questions in `requirements.md` | Visual tweaks, interaction fixes, command palette, natural-language dates if wanted. |
-| **2 – Local server + SQLite** | Durable data, one-command start | Hono server, migrations, repositories, API, store adapter, import of the localStorage export, backups, pre-commit guard, vitest. |
+| **2 – Local server + SQLite** (done) | Durable data, one-command start | Hono server on Node 24 with `node:sqlite`, migrations, repository, state/changes API, diff-based client sync with offline queue, automatic push of prototype data, daily backups, external quick capture, pre-commit guard, tests. Open: `npm start` auto-open of the browser, LAN token. |
 | **3 – Outlook calendar** (started) | Real meetings in Week and Today | Done: registration guide, `server/calendar.mjs` (MSAL loopback flow, persistent token cache, calendarView → events, free/busy, all-day expansion), Vite proxy, Settings connect/sync/disconnect, sync on app start. Open: periodic sync while running, delta queries, ICS feed fallback. |
 | **4 – AI on the server** | Clarify, project breakdown, week proposal | Server endpoints, prompt files, usage log, privacy notice. |
 | **5 – Rhythm features** | Make the rituals smoother | Recurring chores, weekly objectives, top-3, shutdown checklist, load warning, rollover, focus mode, external capture endpoint. |
@@ -168,9 +175,9 @@ Whichever host: keep the server container identical to the local one, bind it to
 
 ```
 npm install
-npm run dev        # http://127.0.0.1:5173
-npm run build      # type-check + production build into dist/
-npm run preview    # serve the production build locally
+npm run dev                  # development: Vite UI (5173) + server (5174)
+npm run build && npm start   # everyday use: the server serves the built UI on http://127.0.0.1:5174
+npm test                     # unit tests (domain, store, server)
 ```
 
-Data lives in the browser's localStorage under `zendo.v1` (app data) and `zendo.ai` (AI settings). Export JSON from Settings before clearing browser data.
+Data: `data/zendo.db` (SQLite, WAL), `data/backups/zendo-YYYY-MM-DD.db` (one per day, last 14 kept), `data/msal-cache.json` (Microsoft tokens). The browser keeps a cache under `zendo.v1`; AI settings stay in the browser under `zendo.ai` for now.

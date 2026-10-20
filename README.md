@@ -21,20 +21,27 @@ Fictional sample data, German UI, light theme (dark theme follows the system).
 
 ## Status
 
-Iteration 0: a design prototype. Data lives in the browser's local storage on your machine. See [docs/requirements.md](docs/requirements.md), [docs/architecture.md](docs/architecture.md) and the research notes in [docs/](docs/).
+Iteration 2: the local server is the source of truth. Data lives in `data/zendo.db` (SQLite) on your machine with daily backups in `data/backups/`; the browser keeps a cache so the app keeps working when the server is down. See [docs/requirements.md](docs/requirements.md), [docs/architecture.md](docs/architecture.md) and the research notes in [docs/](docs/).
 
 ## Run it
 
 ```bash
 npm install
-npm run dev          # UI on http://127.0.0.1:5173 plus the local calendar service (if a .env exists)
+npm run dev          # development: UI on http://127.0.0.1:5173 + server (API, database, calendar) on 5174
+npm run build && npm start   # everyday use: one process serving everything on http://127.0.0.1:5174
 ```
 
-Other scripts: `npm run web` (UI only), `npm run calendar:serve` (calendar service only), `npm run calendar:check` (verify the Microsoft 365 registration), `npm test`, `npm run build`, `npm run preview`.
+Other scripts: `npm run server` (server only), `npm run web` (UI only, browser-only data), `npm run calendar:check` (verify the Microsoft 365 registration), `npm test`, `npm run typecheck`, `npm run hooks:install` (pre-commit guard against committing private files).
+
+Quick capture from anywhere on this machine (CLI, scripts, a bookmarklet):
+
+```bash
+curl -s -X POST http://127.0.0.1:5174/api/inbox -H 'content-type: application/json' -H 'x-zendo: 1' -d '{"text":"Call Jana about the follow-up"}'
+```
 
 To see your Outlook calendar in Zendo, register an app once ([docs/outlook-setup.md](docs/outlook-setup.md)), put the two IDs into `.env`, start `npm run dev` and press **Connect Microsoft 365** in Settings. The sign-in tokens stay in `data/` (gitignored).
 
-The first start loads fictional sample data so you can explore. Settings → Data lets you clear it, export/import JSON, or reload the sample.
+The first start loads fictional sample data so you can explore. Settings → Data shows the connection to the local server and lets you clear everything, export/import JSON, or reload the sample. If you used the browser-only prototype before, its data is pushed to the server automatically on the first start.
 
 ## Keyboard
 
@@ -49,7 +56,7 @@ The first start loads fictional sample data so you can explore. Settings → Dat
 
 This repository is public. Personal data never belongs in it:
 
-- App data stays in your browser (prototype) or in the gitignored `data/` folder (planned).
+- App data stays in the gitignored `data/` folder (SQLite database, backups, Microsoft token cache).
 - API keys are stored only in your browser's local storage (prototype) or `.env` (planned) and are excluded from exports.
 - The Microsoft 365 token cache lives in `data/msal-cache.json` and is gitignored. Delete it (or press Disconnect) to sign out.
 - `.gitignore` already covers `data/`, `*.db`, `*.ics`, `.env*` and MSAL token caches. Keep it that way.

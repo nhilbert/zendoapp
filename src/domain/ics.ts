@@ -1,5 +1,5 @@
-import type { Availability, CalendarEvent, EventKind, ISODate } from './types'
-import { addDaysISO, toISODate } from './dates'
+import type { Availability, CalendarEvent, EventKind, ISODate } from './types.ts'
+import { addDaysISO, toISODate } from './dates.ts'
 
 /**
  * Minimal iCalendar (.ics) parser – enough for a prototype import of an Outlook

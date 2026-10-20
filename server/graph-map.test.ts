@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { mapAvailability, mapGraphEvents } from './graph-map.mjs'
+import { mapAvailability, mapGraphEvents, type GraphEvent } from './graph-map.ts'
 
-const item = (p) => ({ id: 'AAMk1', subject: 'Sync', start: { dateTime: '2026-10-20T10:00:00.0000000' }, end: { dateTime: '2026-10-20T10:30:00.0000000' }, showAs: 'busy', isAllDay: false, isCancelled: false, ...p })
+const item = (p: Partial<GraphEvent>): GraphEvent => ({ id: 'AAMk1', subject: 'Sync', start: { dateTime: '2026-10-20T10:00:00.0000000' }, end: { dateTime: '2026-10-20T10:30:00.0000000' }, showAs: 'busy', isAllDay: false, isCancelled: false, ...p })
 const range = { from: '2026-10-19', to: '2026-10-25' }
 
 describe('mapGraphEvents', () => {
@@ -28,7 +28,7 @@ describe('mapGraphEvents', () => {
     expect(p.kind).toBe('in_person')
   })
   it('maps showAs values', () => {
-    expect(['free', 'tentative', 'busy', 'oof', 'workingElsewhere', undefined].map(mapAvailability)).toEqual(['free', 'tentative', 'busy', 'oof', 'busy', 'busy'])
+    expect(['free', 'tentative', 'busy', 'oof', 'workingElsewhere', undefined].map((v) => mapAvailability(v))).toEqual(['free', 'tentative', 'busy', 'oof', 'busy', 'busy'])
   })
 })
 

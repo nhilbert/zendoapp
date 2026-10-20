@@ -1,4 +1,4 @@
-import type { HHMM, ISODate, Recurrence } from './types'
+import type { HHMM, ISODate, Recurrence } from './types.ts'
 
 /** Local calendar date → 'YYYY-MM-DD' (never uses UTC, so no off-by-one around midnight). */
 export function toISODate(d: Date): ISODate {

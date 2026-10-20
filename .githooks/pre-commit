@@ -1,0 +1,13 @@
+#!/bin/sh
+# Zendo pre-commit guard: this repository is public. Refuse private files and anything that looks like a secret.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+bad=$(printf '%s\n' "$staged" | grep -E '^data/|(^|/)\.env$|\.ics$|msal-cache|\.db$' )
+if [ -n "$bad" ]; then
+  printf 'Refusing to commit private files:\n%s\n' "$bad"
+  exit 1
+fi
+if git diff --cached -U0 -- . ':(exclude)package-lock.json' ':(exclude).githooks/*' | grep -E '^\+' | grep -qE 'sk-ant-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]{32,}|AKIA[0-9A-Z]{16}|"refresh_token"|"access_token"'; then
+  echo 'Refusing to commit: the diff contains what looks like an API key or token.'
+  exit 1
+fi
+exit 0

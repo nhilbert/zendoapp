@@ -17,9 +17,9 @@ import type {
 import { DEFAULT_SETTINGS, PROJECT_COLORS } from '@/domain/types'
 import { buildSampleData } from '@/domain/sample'
 import { addDaysISO, daysBetween, nextOccurrenceFrom, todayISO } from '@/domain/dates'
+import { STORE_VERSION, migratePersisted } from '@/domain/migrations'
 
-/** Schema version of persisted state and JSON exports. Bump together with migratePersisted. */
-export const STORE_VERSION = 4
+export { STORE_VERSION, migratePersisted }
 import { urgencyComparator } from '@/domain/selectors'
 
 const now = () => new Date().toISOString()
@@ -106,28 +106,6 @@ function nextColor(projects: Project[]): ProjectColor {
   const used = new Map<ProjectColor, number>()
   for (const p of projects) used.set(p.color, (used.get(p.color) ?? 0) + 1)
   return [...PROJECT_COLORS].sort((a, b) => (used.get(a) ?? 0) - (used.get(b) ?? 0))[0]
-}
-
-/** Upgrades older persisted snapshots (localStorage key zendo.v1) to the current shape. */
-export function migratePersisted(persisted: unknown, version: number): Partial<State> {
-  const state = persisted as Partial<State>
-  if (version < 2 && state.projects) {
-    // v1 statuses on_hold/done became planned/archived
-    const map: Record<string, Project['status']> = { on_hold: 'planned', done: 'archived' }
-    state.projects = state.projects.map((p) => ({ ...p, status: map[p.status as string] ?? p.status }))
-  }
-  if (version < 3 && state.projects) {
-    // v2 "desired outcome" became the first goal
-    state.projects = state.projects.map((p) => {
-      const { outcome, ...rest } = p as Project & { outcome?: string }
-      const goals = rest.goals?.length ? rest.goals : outcome?.trim() ? [{ id: uid(), text: outcome.trim() }] : rest.goals
-      return { ...rest, goals }
-    })
-  }
-  if (version < 4 && state.settings) {
-    state.settings = { ...DEFAULT_SETTINGS, ...state.settings }
-  }
-  return state
 }
 
 /** Mark a task done; a recurring task spawns its next occurrence (dates shifted, kept in the future). */
@@ -383,7 +361,7 @@ export const useStore = create<State>()(
       },
       importData: (raw) => {
         if (!isDataSnapshot(raw)) throw new Error('not_a_snapshot')
-        const snap = migratePersisted({ ...raw }, raw.version ?? 1)
+        const snap = migratePersisted({ ...raw } as DataSnapshot, raw.version ?? 1)
         set({
           inbox: snap.inbox ?? [],
           projects: snap.projects ?? [],
@@ -400,7 +378,7 @@ export const useStore = create<State>()(
       name: 'zendo.v1',
       storage: createJSONStorage(() => localStorage),
       version: STORE_VERSION,
-      migrate: (persisted, version) => migratePersisted(persisted, version) as State,
+      migrate: (persisted, version) => migratePersisted(persisted as Partial<State>, version) as State,
       partialize: (s) => ({
         inbox: s.inbox,
         projects: s.projects,

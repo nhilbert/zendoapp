@@ -50,7 +50,7 @@ Priority: **M** must, **S** should, **C** could.
 ### 5.1 Capture
 - **CAP-1 (M) [P]** Quick capture from anywhere in the app with one keystroke (`n`); single field; Enter saves, Esc discards; multi-line snippets allowed.
 - **CAP-2 (M) [P]** Inbox page with the same input at the top and the list of captured items below; inline edit and delete.
-- **CAP-3 (S) [ ]** Capture from outside the app: a local URL/CLI endpoint (`POST /api/inbox`), a bookmarklet, and/or a global OS hotkey.
+- **CAP-3 (S) [p]** Capture from outside the app: `POST /api/inbox` on the local server (CLI, scripts); the app picks new items up when its window regains focus. Bookmarklet and OS hotkey: later.
 - **CAP-4 (C) [ ]** Capture emails (forward to a local mailbox) and Teams/Outlook flagged items.
 
 ### 5.2 Clarify (workflow page)
@@ -142,7 +142,7 @@ Priority: **M** must, **S** should, **C** could.
 ### 5.14 Settings and data
 - **SET-1 (M) [P]** Language (de/en), working hours, focus hours per full day, work days.
 - **SET-2 (M) [P]** Export/import all data as JSON; load fictional sample data; delete all data.
-- **SET-3 (M) [ ]** Durable storage in a local SQLite file with automatic daily backups (see architecture).
+- **SET-3 (M) [P]** Durable storage in a local SQLite file (`data/zendo.db`) with automatic daily backups; the browser keeps a cache and queues changes while the server is unreachable.
 - **SET-4 (S) [ ]** Theme: system / light / dark toggle (prototype follows the system).
 
 ## 6. Non-functional requirements
