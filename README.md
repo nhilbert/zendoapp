@@ -32,13 +32,15 @@ npm run dev          # development: UI on http://127.0.0.1:5173 + server (API, d
 npm run build && npm start   # everyday use: one process serving everything on http://127.0.0.1:5174
 ```
 
-Other scripts: `npm run server` (server only), `npm run web` (UI only, browser-only data), `npm run calendar:check` (verify the Microsoft 365 registration), `npm test`, `npm run typecheck`, `npm run hooks:install` (pre-commit guard against committing private files).
+Other scripts: `npm run server` (server only), `npm run mcp` (MCP server over stdio, [docs/mcp.md](docs/mcp.md)), `npm run web` (UI only, browser-only data), `npm run calendar:check` (verify the Microsoft 365 registration), `npm test`, `npm run typecheck`, `npm run hooks:install` (pre-commit guard against committing private files).
 
 Quick capture from anywhere on this machine (CLI, scripts, a bookmarklet):
 
 ```bash
 curl -s -X POST http://127.0.0.1:5174/api/inbox -H 'content-type: application/json' -H 'x-zendo: 1' -d '{"text":"Call Jana about the follow-up"}'
 ```
+
+AI agents (Claude Desktop, Claude Code …) can work with Zendo through its MCP server: capture into the inbox from meeting notes or e-mails, read and adapt the day and week plan, manage tasks and projects. `npm run mcp` for a local agent, or `/mcp` on the server with `ZENDO_MCP_TOKEN` – see [docs/mcp.md](docs/mcp.md).
 
 To see your Outlook calendar in Zendo, register an app once ([docs/outlook-setup.md](docs/outlook-setup.md)), put the two IDs into `.env`, start `npm run dev` and press **Connect Microsoft 365** in Settings. The sign-in tokens stay in `data/` (gitignored).
 

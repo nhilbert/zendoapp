@@ -10,13 +10,15 @@ export interface AppOptions {
   repo: Repo
   calendar?: Hono
   ai?: Hono
+  /** MCP endpoint for AI agents (server/mcp.ts), mounted at /mcp; it checks its own bearer token. */
+  mcp?: Hono
   /** Directory with the built client (dist). When set, the server serves the UI too. */
   staticDir?: string
   /** Public address when hosted behind a reverse proxy (ZENDO_PUBLIC_URL); its host and origin pass the guard. */
   publicUrl?: URL
 }
 
-export function createApp({ repo, calendar, ai, staticDir, publicUrl }: AppOptions): Hono {
+export function createApp({ repo, calendar, ai, mcp, staticDir, publicUrl }: AppOptions): Hono {
   const app = new Hono()
 
   app.get('/api/health', (c) => c.json({ ok: true, version: STORE_VERSION, initialized: repo.isInitialized() }))
@@ -45,6 +47,7 @@ export function createApp({ repo, calendar, ai, staticDir, publicUrl }: AppOptio
   if (calendar) app.route('/api/calendar', calendar)
   if (ai) app.route('/api/ai', ai)
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404))
+  if (mcp) app.route('/mcp', mcp)
 
   if (staticDir) {
     app.use('/*', serveStatic({ root: staticDir }))

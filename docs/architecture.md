@@ -67,6 +67,8 @@ zendoapp/
 │  ├─ calendar.ts           Microsoft 365 (MSAL loopback + PKCE, calendarView)
 │  ├─ graph-map.ts          Graph → events mapping (pure)
 │  ├─ backup.ts             daily VACUUM INTO data/backups/
+│  ├─ ops.ts                agent operations on the database (inbox, tasks, projects, plan, reviews)
+│  ├─ mcp.ts · mcp-stdio.ts MCP server: /mcp over HTTP with bearer token, or stdio
 │  └─ index.ts              entry point
 ├─ src/sync/                client: api wrapper, diff-based sync with offline queue
 ├─ data/                    gitignored: zendo.db, backups/, msal-cache.json
@@ -115,6 +117,8 @@ All JSON under `/api`. Every request must carry the header `x-zendo: 1` and come
 | `GET /api/calendar/status` · `POST /api/calendar/connect` · `POST /api/calendar/sync` · `POST /api/calendar/disconnect` · `GET /api/calendar/events?from&to` | Microsoft 365: status with last sync, sign-in (opens the browser locally; hosted it returns a device code and `/status` reports `pending` until it is entered), then syncs, sync now, sign-out, raw calendarView. The server also syncs at start and every `ZENDO_CALENDAR_SYNC_MINUTES` (default 15) and writes events into the database, keeping the owner's overrides. 503 `not_configured` without an app registration. |
 | `GET /api/ai/status` · `POST /api/ai/clarify` | AI: provider/model from `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `ZENDO_AI_PROVIDER`, `ZENDO_AI_MODEL`); clarify suggestion for `{ text, locale }`, with project names read from the database. Claude calls use structured output (JSON schema) and the server-side refusal fallback. 503 `not_configured` without a key. |
 | `POST /api/ai/week` | Week proposal for `{ start, days ≤ 14, today, now, locale, includePrivate }`: additional blocks `{ date, projectId, size, note, reason }` plus a summary, read from the database and fitted into each day's free time (the same capacity rules as Week and Today); `dropped` counts suggestions that did not fit. Days before the browser's `today` are skipped; private projects only with `includePrivate`. |
+
+`/mcp` (outside `/api`, only when `ZENDO_MCP_TOKEN` is set): MCP over Streamable HTTP for AI agents, authenticated with `Authorization: Bearer`, not with the `x-zendo` header. Its tools (`server/mcp.ts`) wrap `server/ops.ts`, which reads the snapshot, applies the shared rules from `src/domain/taskRules.ts` and writes the difference through `Repo.applyChanges`. The same tools run over stdio (`npm run mcp`). See [mcp.md](mcp.md).
 
 Planned: `POST /api/ai/project-actions`, `GET /api/export`.
 

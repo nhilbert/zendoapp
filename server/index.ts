@@ -15,6 +15,7 @@ import { backupDaily } from './backup.ts'
 import { calendarService, startCalendarSyncJob } from './calendar.ts'
 import { createApp } from './app.ts'
 import { aiRoutes, resolveAi, type AiProviderName } from './ai.ts'
+import { mcpRoutes } from './mcp.ts'
 
 if (existsSync('.env')) process.loadEnvFile('.env')
 
@@ -52,13 +53,17 @@ const ai = resolveAi({
   anthropicKey: process.env.ANTHROPIC_API_KEY?.trim() || undefined,
   openaiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
 })
+// MCP endpoint for AI agents at /mcp, only with a token (docs/mcp.md).
+const MCP_TOKEN = process.env.ZENDO_MCP_TOKEN?.trim()
+const mcp = MCP_TOKEN ? mcpRoutes(repo, MCP_TOKEN, { hidePrivate: process.env.ZENDO_MCP_HIDE_PRIVATE === '1' }) : undefined
 const hasUi = existsSync(path.join(DIST, 'index.html'))
-const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL })
+const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), mcp, staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL })
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, () => {
   console.log(`Zendo server on http://${HOST}:${PORT}${PUBLIC_URL ? ` (public ${PUBLIC_URL.origin})` : ''} · database ${DB_FILE}${backup ? ` · backup ${backup}` : ''}`)
   if (!hasUi) console.log('No dist/ build found: serving the API only (fine with npm run dev; run npm run build for npm start).')
   if (!process.env.MS_CLIENT_ID) console.log('Microsoft 365 not configured (no .env) – calendar routes answer 503, everything else works.')
+  console.log(mcp ? `MCP: http://${HOST}:${PORT}/mcp (bearer token)` : 'MCP: off over HTTP (set ZENDO_MCP_TOKEN); stdio via npm run mcp')
   console.log(ai ? `AI: ${ai.provider} · ${ai.model}` : 'AI: not configured (add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env)')
 })
 server.on('error', (err: NodeJS.ErrnoException) => {

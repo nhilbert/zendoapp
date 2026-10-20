@@ -22,6 +22,8 @@ export function openDb(file: string): DatabaseSync {
   const db = new DatabaseSync(file)
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = OFF')
+  // The stdio MCP server (server/mcp-stdio.ts) may write from a second process: wait for its lock instead of failing.
+  db.exec('PRAGMA busy_timeout = 5000')
   runMigrations(db)
   return db
 }
