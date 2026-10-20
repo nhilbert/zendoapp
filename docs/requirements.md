@@ -97,7 +97,7 @@ Priority: **M** must, **S** should, **C** could.
 - **WK-8 (M) [P]** A block absorbs its project's meetings that day: the project consumes the larger of the block and its meetings (½ day + 1 h meeting = 4 h; ¼ day + 3 h of meetings = 3 h). Meetings without a project, or of projects without a block that day, count separately. The bar shows absorbed meeting time shaded inside the project segment; a block whose meetings exceed it shows the actual hours.
 - **WK-5 (S) [ ]** Weekly objectives (max 3) stated for the week; shown on Today.
 - **WK-6 (M) [P]** Workshop rule: a workshop of five hours or more blocks the whole day; a shorter workshop blocks at least half a day. Everything else counts by its duration. (Buffer/travel blocks: later.)
-- **WK-7 (C) [ ]** AI proposal of a week allocation from deadlines, next actions and free capacity (5.13).
+- **WK-7 (C) [P]** AI proposal of a week allocation from deadlines, open work and free capacity (AI-4).
 
 ### 5.8 Daily planning
 - **DAY-1 (M) [P]** Today view with a timeline (working hours, extended to cover all events) in two lanes: calendar (left) and plan (right).
@@ -105,12 +105,14 @@ Priority: **M** must, **S** should, **C** could.
 - **DAY-3 (M) [P]** Capacity line: meetings · planned · free hours for the day.
 - **DAY-4 (S) [ ]** Load warning when planned work exceeds ~70–80 % of free time (planning fallacy guard).
 - **DAY-5 (S) [ ]** "Top 3 for today" marker.
+- **DAY-6 (M) [P]** Rollover: on today, open tasks planned for earlier days are listed once under "Left over" (oldest first, not repeated among the candidates). Per task: plan for today (time of day dropped), back to the list (plan removed), or tick off; or all at once. Nothing moves without a decision.
+- **DAY-7 (M) [P]** The day's blocks from the week plan are shown on Today: project (or chores), share of the day and effective hours, the block's note and the project meetings it contains; on work days without blocks a quiet link to the week view.
 
 ### 5.9 Daily execution
 - **EXE-1 (M) [P]** Check off actions from the timeline or the list; completed items stay visible but struck through.
 - **EXE-2 (M) [P]** From any action: add dated notes, set to waiting (with "waiting for"), change due/planned date and time, change priority, estimate, project.
 - **EXE-3 (C) [ ]** Lightweight timer / actual time per action, or import actuals from Toggl – a later add-on (feedback round 1).
-- **EXE-4 (S) [ ]** Focus mode: full-screen single task with its notes.
+- **EXE-4 (S) [P]** Focus mode on one project (owner's choice, 2026-10-20): full screen without navigation, the project's goal and today's block, its next action large (with a prompt to choose the next one once it is done), then the following actions, waiting-for, done today, adding a task and the project notes. Quick capture stays available; Esc returns to where focus started. Started from the project page or a project block on Today.
 
 ### 5.10 Daily review
 - **DRV-1 (M) [P]** For a day: completed actions, notes made, still-open planned actions with "move to tomorrow", tomorrow's preview (events, blocks, planned actions), a journal field.
@@ -135,9 +137,9 @@ Priority: **M** must, **S** should, **C** could.
 - **AI-1 (M) [P]** Settings: choose provider (Claude/Anthropic or ChatGPT/OpenAI), paste API key, optional model override. Key is stored only locally and excluded from exports.
 - **AI-2 (M) [P]** Clarify: suggest kind, a verb-first next action, project match, estimate, priority, due/planned dates for the current inbox item. The user always confirms.
 - **AI-3 (S) [ ]** Project page: break a project outcome into candidate actions; propose the next action.
-- **AI-4 (S) [ ]** Week: propose block allocation across the two weeks from deadlines, next actions, estimates and free capacity; explain the proposal; the user drags to adjust.
+- **AI-4 (S) [P]** Week: propose additional blocks for the visible two weeks from deadlines, open work and free capacity, with a summary and a reason per block. Suggestions appear dashed; the user removes single ones and applies the rest (notes carried over). The server drops suggestions that would overfill a day, land on off or fully booked days, or name unknown or hidden projects.
 - **AI-5 (S) [ ]** Reviews: draft the daily/weekly journal from completed items and notes.
-- **AI-6 (M) [P]** Calls go through the local server with the key from `.env` (key never in the browser); Settings states the provider, model and what is sent (inbox text, project names). A key stored in the browser remains only as a fallback when the server has none. A managed secret store is deferred (owner's decision, 2026-10-20).
+- **AI-6 (M) [P]** Calls go through the local server with the key from `.env` (key never in the browser); Settings states the provider, model and what is sent (Clarify: inbox text and project names; week proposal: project names, headline goals, due dates, open-work figures and free hours, no task or meeting titles). A key stored in the browser remains only as a fallback when the server has none. A managed secret store is deferred (owner's decision, 2026-10-20).
 
 ### 5.14 Settings and data
 - **SET-1 (M) [P]** Language (de/en), working hours, focus hours per full day, work days.
@@ -176,7 +178,7 @@ Answered items are struck through; see section 9 for the decisions.
 9. **Calendar.** App registration is possible (see `outlook-setup.md` for how simple it is). Still open: write blocks back to Outlook as busy time? Only the primary calendar?
 10. ~~**AI.**~~ Sending inbox text and project names is acceptable; "Auto" on demand per item.
 11. **Reference material.** Do notes/reference live in Zendo or elsewhere (OneNote, Obsidian)? Only links?
-12. **Devices.** One machine only, or laptop + desktop (would need sync and changes "local only")?
+12. ~~**Devices.**~~ Answered by hosting: one server, any device (laptop, phone).
 13. **Review timing.** Weekly review on Friday afternoon or Monday morning? Should the app nudge you?
 14. ~~**Look and feel.**~~ Approved, including dark mode.
 15. **Priorities.** Three levels (high/normal/low) or something else (Eisenhower, flag only)?
@@ -197,3 +199,11 @@ Answered items are struck through; see section 9 for the decisions.
 - Project lifecycle merged with the owner's request: active / planned / someday / archived (old on hold → planned, done → archived).
 - Hosting on the go: wanted later (phone access, computer off); needs iteration 2 first. Options and a recommendation in `architecture.md` section 11.
 - Kanban cards can be sorted freely. Trade-off accepted: manual order replaces automatic priority/due sorting (a card dragged above a high-priority card would otherwise snap back); "sort by urgency" per column keeps the automatic order one click away.
+
+## 10. Decisions on 2026-10-20
+
+- Hosting: own server in Germany (Hetzner), Microsoft login in front, addresses per app on the business domain; the server is the only source of truth, the laptop copy is for development.
+- Today shows the week plan's blocks for the day.
+- Rollover is offered, never automatic: left-over tasks wait on Today for a decision.
+- The AI week proposal fills free time with suggestions only; the owner removes or applies them. Task and meeting titles are not sent.
+- Focus mode means focus on one project (not a single task).

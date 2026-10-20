@@ -103,7 +103,7 @@ Invariants (enforced in the store today, in the server tomorrow):
 
 ## 5. API (implemented)
 
-All JSON under `/api`, loopback only. Every request must carry the header `x-zendo: 1` and come from a loopback host/origin (cross-site pages cannot add the header without a CORS preflight, which the server never grants).
+All JSON under `/api`. Every request must carry the header `x-zendo: 1` and come from a loopback host/origin or the configured public URL (cross-site pages cannot add the header without a CORS preflight, which the server never grants). Hosted, the login proxy answers API calls without a session with 401 `login_required`.
 
 | Method & path | Purpose |
 |---|---|
@@ -112,10 +112,11 @@ All JSON under `/api`, loopback only. Every request must carry the header `x-zen
 | `PUT /api/state` | Replace everything (migrated to the current schema first). Used for the first push of local data and for JSON imports. |
 | `POST /api/changes` | `{ upserts: {col: records[]}, deletes: {col: ids[]}, settings? }` applied in one transaction. |
 | `POST /api/inbox` | Quick capture from outside the app: `{ text }`. |
-| `GET /api/calendar/status` · `POST /api/calendar/connect` · `POST /api/calendar/sync` · `POST /api/calendar/disconnect` · `GET /api/calendar/events?from&to` | Microsoft 365: status with last sync, interactive sign-in (opens the browser, then syncs), sync now, sign-out, raw calendarView. The server also syncs at start and every `ZENDO_CALENDAR_SYNC_MINUTES` (default 15) and writes events into the database, keeping the owner's overrides. 503 `not_configured` without an app registration. |
+| `GET /api/calendar/status` · `POST /api/calendar/connect` · `POST /api/calendar/sync` · `POST /api/calendar/disconnect` · `GET /api/calendar/events?from&to` | Microsoft 365: status with last sync, sign-in (opens the browser locally; hosted it returns a device code and `/status` reports `pending` until it is entered), then syncs, sync now, sign-out, raw calendarView. The server also syncs at start and every `ZENDO_CALENDAR_SYNC_MINUTES` (default 15) and writes events into the database, keeping the owner's overrides. 503 `not_configured` without an app registration. |
 | `GET /api/ai/status` · `POST /api/ai/clarify` | AI: provider/model from `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `ZENDO_AI_PROVIDER`, `ZENDO_AI_MODEL`); clarify suggestion for `{ text, locale }`, with project names read from the database. Claude calls use structured output (JSON schema) and the server-side refusal fallback. 503 `not_configured` without a key. |
+| `POST /api/ai/week` | Week proposal for `{ start, days ≤ 14, today, now, locale, includePrivate }`: additional blocks `{ date, projectId, size, note, reason }` plus a summary, read from the database and fitted into each day's free time (the same capacity rules as Week and Today); `dropped` counts suggestions that did not fit. Days before the browser's `today` are skipped; private projects only with `includePrivate`. |
 
-Planned: `POST /api/ai/plan-week`, `POST /api/ai/project-actions`, `GET /api/export`.
+Planned: `POST /api/ai/project-actions`, `GET /api/export`.
 
 ## 6. Calendar integration design (Microsoft 365)
 
@@ -129,10 +130,10 @@ Ignored on purpose: CalDAV (not offered by Exchange Online), EWS (blocked for ne
 
 ## 7. AI assistance design
 
-- Provider abstraction `AiProvider { clarify(), planWeek(), projectActions() }` with two implementations (Anthropic official SDK, OpenAI official SDK). Default models: `claude-opus-5-5` (adaptive thinking is always on; `output_config.effort: "low"` for classification-style calls) and the user's chosen OpenAI model.
-- Prompts live in `server/ai/prompts/*.md` and are versioned; responses are requested as JSON and validated with a schema before anything touches the database. The user always confirms in the UI; nothing is written automatically.
-- Privacy: a settings notice lists exactly what is sent (inbox text, project names and outcomes, calendar titles for week planning). Keys come from `.env` or the OS keychain, never from the browser. Per-call token usage is logged locally for cost awareness.
-- Features by iteration: clarify suggestions (now, browser-direct), project breakdown, week allocation proposal, review drafts.
+- `server/ai.ts` resolves one provider from `.env` (Anthropic official SDK first, OpenAI as alternative) into a single `complete(system, user, { schema, effort, maxTokens })` call; tests inject a fake. Default model `claude-opus-5-5` (adaptive thinking is always on, so depth is set per call through `output_config.effort`: `low` for Clarify, `medium` for the week proposal), structured output with the call's JSON schema, `max_tokens` 16 000, and the server-side refusal fallback.
+- Prompts, schemas and parsers live next to the domain code in `src/ai/clarify.ts` and `src/ai/week.ts` (dependency-free, shared by server and tests). Answers are parsed defensively; the week proposal is additionally fitted into each day's capacity before it leaves the server. Nothing is written automatically: Clarify fills the form, the week proposal appears as dashed blocks that the user removes or applies.
+- Privacy: Settings states what is sent. Clarify: the inbox text and project names. Week proposal: dates, free and meeting hours per day, project names, headline goals, due dates and open-work figures (task counts, estimated hours, earliest task deadline); no task titles, meeting titles or notes; private projects only while they are shown. Keys live in the server's environment and never reach the browser (a browser key remains only as the Clarify fallback).
+- Open: project breakdown, review drafts, a local usage/cost log.
 
 ## 8. Privacy and security
 
@@ -152,12 +153,13 @@ Ignored on purpose: CalDAV (not offered by Exchange Online), EWS (blocked for ne
 | Iteration | Goal | Main work |
 |---|---|---|
 | **0 – Prototype (done)** | Validate design and flows | Client-only app, localStorage, sample data, de/en, DnD on Board/Week/Today, ICS file import, AI clarify (browser-direct). |
-| **1 – Feedback round** | Adjust the design to the owner's feedback; answer open questions in `requirements.md` | Visual tweaks, interaction fixes, command palette, natural-language dates if wanted. |
+| **1 – Feedback round** (done) | Adjust the design to the owner's feedback; answer open questions in `requirements.md` | Done: decide-first Clarify, workshop and free/busy capacity rules, private toggle, project lifecycle, recurring chores, Today fills the viewport. Open: command palette, natural-language dates. |
 | **2 – Local server + SQLite** (done) | Durable data, one-command start | Hono server on Node 24 with `node:sqlite`, migrations, repository, state/changes API, diff-based client sync with offline queue, automatic push of prototype data, daily backups, external quick capture, pre-commit guard, tests. Open: `npm start` auto-open of the browser, LAN token. |
 | **3 – Outlook calendar** (done) | Real meetings in Week and Today | Done: registration guide, `server/calendar.mjs` (MSAL loopback flow, persistent token cache, calendarView → events, free/busy, all-day expansion), Vite proxy, Settings connect/sync/disconnect, sync on app start. Periodic server-side sync every 15 minutes. Open: delta queries, ICS feed fallback. |
-| **4 – AI on the server** (started) | Clarify, project breakdown, week proposal | Done: `/api/ai/clarify` with key in `.env`, structured output, refusal fallback, privacy notice in Settings, browser key only as fallback. Open: project breakdown, week proposal, usage log. |
-| **4b – Phone layout** (done) | Usable on a phone once hosted | Bottom navigation, responsive pages, touch drag via long-press, non-drag alternatives, PWA manifest and icons. Open: offline service worker, hosting (section 11). |
-| **5 – Rhythm features** | Make the rituals smoother | Recurring chores, weekly objectives, top-3, shutdown checklist, load warning, rollover, focus mode, external capture endpoint. |
+| **4 – AI on the server** (mostly done) | Clarify, project breakdown, week proposal | Done: `/api/ai/clarify` with key in `.env`, structured output, refusal fallback, privacy notice in Settings, browser key only as fallback; `/api/ai/week` proposes blocks for the visible two weeks, fitted into free capacity, shown as dashed suggestions to remove or apply. Open: project breakdown, usage log. |
+| **4b – Phone layout** (done) | Usable on a phone once hosted | Bottom navigation, responsive pages, touch drag via long-press, non-drag alternatives, PWA manifest and icons. Open: offline service worker. |
+| **4c – Hosting** (done) | Phone access with the computer off | Section 11: Hetzner server, Docker, Caddy + oauth2-proxy with Entra ID, device-code calendar sign-in, "Sign in again" when the login expires, unsent changes survive reloads, daily backups also copied to the laptop, restore tested. Open: outage alert, quick capture from outside (needs its own token behind the login). |
+| **5 – Rhythm features** (started) | Make the rituals smoother | Done: recurring chores, rollover (left-over tasks offered on Today), the week plan's blocks on Today, focus mode on one project. Open: weekly objectives, top-3, shutdown checklist, load warning. |
 
 ## 11. Hosting options (access from a phone, computer switched off)
 

@@ -1,13 +1,14 @@
 # Zendo
 
-A minimal, calm todo and planning app inspired by *Getting Things Done*, built for one person and served on localhost.
+A minimal, calm todo and planning app inspired by *Getting Things Done*, built for one person. It runs on localhost or on your own server behind a login.
 
 - **Capture** anything into the inbox with one keystroke (`n`).
 - **Clarify** the inbox one item at a time into actions, projects, meetings, someday or trash.
 - **Projects** with exactly one next action each; chores for everything that is not a project.
-- **Board** (kanban), **Week** (rolling two-week plan with ½-day blocks against your calendar), **Today** (timeline and daily list), **Review** (daily and weekly).
+- **Board** (kanban), **Week** (rolling two-week plan with ½-day blocks against your calendar, optionally proposed by AI), **Today** (timeline, daily list, the day's blocks and yesterday's left-overs), **Review** (daily and weekly).
+- **Focus** on one project: its next action and what follows, everything else hidden.
 - German and English UI, light and dark, keyboard-first, drag and drop where it helps.
-- Optional AI help (bring your own Claude or ChatGPT key) and Outlook calendar import.
+- Optional AI help (bring your own Claude or ChatGPT key) for Clarify and the week plan, and Outlook calendar sync.
 
 ## Screenshots
 
@@ -21,7 +22,7 @@ Fictional sample data, German UI, light theme (dark theme follows the system).
 
 ## Status
 
-Iteration 2: the local server is the source of truth. Data lives in `data/zendo.db` (SQLite) on your machine with daily backups in `data/backups/`; the browser keeps a cache so the app keeps working when the server is down. See [docs/requirements.md](docs/requirements.md), [docs/architecture.md](docs/architecture.md) and the research notes in [docs/](docs/).
+The server is the source of truth: data lives in `data/zendo.db` (SQLite) with daily backups in `data/backups/`; the browser keeps a cache and queues changes so the app keeps working when the server is down. Run it locally, or host the same container behind a login (`Dockerfile`, architecture section 11). See [docs/requirements.md](docs/requirements.md), [docs/architecture.md](docs/architecture.md) and the research notes in [docs/](docs/).
 
 ## Run it
 
@@ -50,14 +51,14 @@ The first start loads fictional sample data so you can explore. Settings → Dat
 | `n` | Capture to inbox |
 | `g` then `t` / `w` / `i` / `c` / `p` / `b` / `r` | Go to Today / Week / Inbox / Clarify / Projects / Board / Review |
 | `1`–`6` | On Clarify: choose the kind |
-| `Esc` | Close dialogs and the task drawer |
+| `Esc` | Close dialogs and the task drawer; end focus mode |
 
 ## Privacy
 
 This repository is public. Personal data never belongs in it:
 
 - App data stays in the gitignored `data/` folder (SQLite database, backups, Microsoft token cache).
-- API keys are stored only in your browser's local storage (prototype) or `.env` (planned) and are excluded from exports.
+- API keys live in the server's `.env` (gitignored) and never reach the browser; a key stored in the browser remains only as a fallback for Clarify and is excluded from exports.
 - The Microsoft 365 token cache lives in `data/msal-cache.json` and is gitignored. Delete it (or press Disconnect) to sign out.
 - `.gitignore` already covers `data/`, `*.db`, `*.ics`, `.env*` and MSAL token caches. Keep it that way.
 - Sample data is fictional. Use it for screenshots.
