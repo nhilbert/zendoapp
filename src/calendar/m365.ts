@@ -1,7 +1,6 @@
-import type { CalendarEvent } from '@/domain/types'
-import { addDaysISO, startOfWeekISO, todayISO } from '@/domain/dates'
 import { useStore } from '@/store/useStore'
 import { api } from '@/sync/api'
+import { refreshNow } from '@/sync/server'
 
 export { NotConfigured, ServiceUnavailable } from '@/sync/api'
 
@@ -13,26 +12,20 @@ export { NotConfigured, ServiceUnavailable } from '@/sync/api'
 export interface M365Status {
   connected: boolean
   account: string | null
+  lastSync?: string | null
 }
 
 export const getStatus = () => api<M365Status>('/api/calendar/status')
 export const connect = () => api<M365Status>('/api/calendar/connect', { method: 'POST', timeoutMs: 180_000 })
 export const disconnect = () => api<M365Status>('/api/calendar/disconnect', { method: 'POST' })
 
-/** Sync range: last week … five weeks ahead (covers the two-week plan and the review). */
-export function syncRange(): { from: string; to: string } {
-  const from = addDaysISO(startOfWeekISO(todayISO()), -7)
-  return { from, to: addDaysISO(from, 7 + 35) }
-}
-
-export async function syncCalendar(): Promise<{ total: number; kept: number; removed: number; account: string | null }> {
-  const { from, to } = syncRange()
-  const data = await api<{ events: Omit<CalendarEvent, 'id'>[]; account: string | null }>(`/api/calendar/events?from=${from}&to=${to}`, { timeoutMs: 60_000 })
-  const store = useStore.getState()
-  const result = store.importEvents(
-    data.events.map((e) => ({ ...e, id: crypto.randomUUID() })),
-    'm365',
-  )
-  store.updateSettings({ calendar: { account: data.account, lastSync: new Date().toISOString() } })
-  return { ...result, account: data.account }
+/**
+ * Asks the server to fetch the calendar and write it into the database (the server also does this
+ * at start and every 15 minutes), then pulls the updated state.
+ */
+export async function syncCalendar(): Promise<{ total: number; kept: number; removed: number; account: string | null; lastSync: string }> {
+  const result = await api<{ total: number; kept: number; removed: number; account: string | null; lastSync: string }>('/api/calendar/sync', { method: 'POST', timeoutMs: 120_000 })
+  useStore.getState().updateSettings({ calendar: { account: result.account, lastSync: result.lastSync } })
+  await refreshNow()
+  return result
 }

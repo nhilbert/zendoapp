@@ -54,3 +54,23 @@ describe('Repo', () => {
     expect(repo.loadState().inbox).toHaveLength(1)
   })
 })
+
+describe('replaceEvents', () => {
+  it('replaces a source, keeps overrides by external id, leaves manual events alone', () => {
+    const repo = fresh()
+    repo.applyChanges({ upserts: { events: [{ id: 'manual', title: 'Coaching', date: '2026-10-20', start: '09:00', end: '10:00', kind: 'coaching', source: 'manual' }] } })
+    const base = { date: '2026-10-21', start: '10:00', end: '11:00', kind: 'online' as const, source: 'm365' as const }
+    repo.replaceEvents('m365', [{ ...base, title: 'A', externalId: 'a#2026-10-21' }, { ...base, title: 'B', externalId: 'b#2026-10-21' }])
+    const b = repo.loadState().events.find((e) => e.title === 'B') as unknown as { id: string }
+    repo.applyChanges({ upserts: { events: [{ ...b, title: 'B', kind: 'workshop', private: true, date: '2026-10-21', start: '10:00', end: '11:00', source: 'm365', externalId: 'b#2026-10-21' }] } })
+    const r = repo.replaceEvents('m365', [{ ...base, title: 'B moved', start: '14:00', end: '15:00', externalId: 'b#2026-10-21' }, { ...base, title: 'C', externalId: 'c#2026-10-22' }])
+    expect(r).toEqual({ total: 2, kept: 1, removed: 1 })
+    const events = repo.loadState().events as unknown as { id: string; title: string; kind: string; private?: boolean; start: string; source: string }[]
+    expect(events.map((e) => e.title).sort()).toEqual(['B moved', 'C', 'Coaching'])
+    const b2 = events.find((e) => e.title === 'B moved')!
+    expect(b2.id).toBe(b.id)
+    expect(b2.kind).toBe('workshop')
+    expect(b2.private).toBe(true)
+    expect(b2.start).toBe('14:00')
+  })
+})

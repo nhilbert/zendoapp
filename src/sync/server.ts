@@ -106,6 +106,10 @@ let resolver: ((choice: 'browser' | 'server') => Promise<void>) | null = null
 /** Called by the conflict dialog. */
 export const resolveConflict = (choice: 'browser' | 'server'): Promise<void> => resolver?.(choice) ?? Promise.resolve()
 
+let refresher: (() => Promise<void>) | null = null
+/** Pull the server state now if it changed (used after server-side jobs such as a calendar sync). */
+export const refreshNow = (): Promise<void> => refresher?.() ?? Promise.resolve()
+
 export function startSync(): () => void {
   const sync = useSync.getState().set
   let applying = false // true while server state is written into the store (no echo back)
@@ -323,12 +327,14 @@ export function startSync(): () => void {
     },
   })
 
+  refresher = refresh
   const onFocus = () => void refresh()
   window.addEventListener('focus', onFocus)
   void handshake()
 
   return () => {
     stopped = true
+    refresher = null
     unsubscribe()
     window.removeEventListener('focus', onFocus)
     window.clearTimeout(timer)

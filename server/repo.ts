@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { COLLECTIONS, TABLE, type Collection, getMeta, setMeta, transaction } from './db.ts'
 import { STORE_VERSION, migratePersisted } from '../src/domain/migrations.ts'
-import type { Settings } from '../src/domain/types.ts'
+import type { CalendarEvent, Settings } from '../src/domain/types.ts'
 
 export interface Record_ {
   id: string
@@ -142,6 +142,52 @@ export class Repo {
       setMeta(this.db, 'initialized', '1')
       setMeta(this.db, 'changed_at', now)
     })
+  }
+
+  /**
+   * Replace all events of one source (m365 or ics) with a fresh import. Events already known by
+   * externalId keep their id and the user's overrides (kind, project, private flag); the rest are
+   * removed. Manual events are untouched.
+   */
+  replaceEvents(source: 'm365' | 'ics', incoming: Omit<CalendarEvent, 'id'>[]): { total: number; kept: number; removed: number } {
+    const now = new Date().toISOString()
+    let kept = 0
+    let removed = 0
+    transaction(this.db, () => {
+      const previous = (this.db.prepare(`SELECT data FROM events WHERE source = ?`).all(source) as { data: string }[]).map((r) => JSON.parse(r.data) as CalendarEvent)
+      const byKey = new Map(previous.filter((e) => e.externalId).map((e) => [e.externalId!, e]))
+      const upsert = this.db.prepare(`INSERT INTO events(id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
+      const keptIds = new Set<string>()
+      for (const ev of incoming) {
+        const prev = ev.externalId ? byKey.get(ev.externalId) : undefined
+        const record: CalendarEvent = prev
+          ? { ...ev, id: prev.id, kind: prev.kind, projectId: prev.projectId, private: prev.private ?? ev.private, source }
+          : { ...ev, id: crypto.randomUUID(), source }
+        if (prev) {
+          kept += 1
+          keptIds.add(prev.id)
+        }
+        upsert.run(record.id, JSON.stringify(record), now)
+      }
+      const del = this.db.prepare(`DELETE FROM events WHERE id = ?`)
+      for (const e of previous) {
+        if (!keptIds.has(e.id)) {
+          del.run(e.id)
+          removed += 1
+        }
+      }
+      setMeta(this.db, 'initialized', '1')
+      setMeta(this.db, 'changed_at', now)
+    })
+    return { total: incoming.length, kept, removed }
+  }
+
+  getMeta(key: string): string | undefined {
+    return getMeta(this.db, key)
+  }
+
+  setMeta(key: string, value: string): void {
+    setMeta(this.db, key, value)
   }
 
   /** Quick capture from outside the app (CLI, bookmarklet). */

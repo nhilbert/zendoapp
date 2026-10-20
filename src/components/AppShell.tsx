@@ -5,7 +5,6 @@ import { BookOpen, CalendarRange, Columns3, Eye, EyeOff, Folder, Inbox, ListChec
 import { useUi } from '@/store/useUi'
 import { useStore } from '@/store/useStore'
 import { useSync } from '@/store/useSync'
-import { syncCalendar } from '@/calendar/m365'
 import QuickCapture from './QuickCapture'
 import TaskDrawer from './TaskDrawer'
 import EventDialog from './EventDialog'
@@ -34,16 +33,10 @@ export default function AppShell() {
   const navigate = useNavigate()
   const openCapture = useUi((s) => s.openCapture)
   const closeAll = useUi((s) => s.closeAll)
-  const connectedAccount = useStore((s) => s.settings.calendar?.account)
   const hidePrivate = useStore((s) => !!s.settings.hidePrivate)
   const syncStatus = useSync((s) => s.status)
   const updateSettings = useStore((s) => s.updateSettings)
   const togglePrivate = () => updateSettings({ hidePrivate: !useStore.getState().settings.hidePrivate })
-
-  // Quietly refresh the calendar on start when Microsoft 365 was connected before.
-  useEffect(() => {
-    if (connectedAccount) syncCalendar().catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let pendingGo = false

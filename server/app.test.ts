@@ -30,8 +30,9 @@ describe('API', () => {
     expect((await (await app.request('/api/state', { headers: H })).json()).inbox[0].text).toBe('from curl')
   })
   it('answers 503 not_configured for the calendar when no app registration exists', async () => {
-    const { calendarRoutes } = await import('./calendar.ts')
-    const withCal = createApp({ repo: new Repo(openDb(':memory:')), calendar: calendarRoutes({ timezone: 'UTC', dataDir: '/tmp' }) })
+    const { calendarService } = await import('./calendar.ts')
+    const repo = new Repo(openDb(':memory:'))
+    const withCal = createApp({ repo, calendar: calendarService({ timezone: 'UTC', dataDir: '/tmp' }, repo).routes })
     const res = await withCal.request('/api/calendar/status', { headers: H })
     expect(res.status).toBe(503)
     expect((await res.json()).error).toBe('not_configured')

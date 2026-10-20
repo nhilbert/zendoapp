@@ -11,7 +11,7 @@ import { serve } from '@hono/node-server'
 import { openDb } from './db.ts'
 import { Repo } from './repo.ts'
 import { backupDaily } from './backup.ts'
-import { calendarRoutes } from './calendar.ts'
+import { calendarService, startCalendarSyncJob } from './calendar.ts'
 import { createApp } from './app.ts'
 
 if (existsSync('.env')) process.loadEnvFile('.env')
@@ -29,14 +29,18 @@ const backup = repo.isInitialized() ? backupDaily(db, DB_FILE, BACKUP_DIR) : nul
 setInterval(() => {
   if (repo.isInitialized()) backupDaily(db, DB_FILE, BACKUP_DIR)
 }, 60 * 60 * 1000).unref()
-const calendar = calendarRoutes({
-  clientId: process.env.MS_CLIENT_ID?.trim(),
-  tenantId: process.env.MS_TENANT_ID?.trim(),
-  timezone: process.env.MS_TIMEZONE || 'W. Europe Standard Time',
-  dataDir: DATA_DIR,
-})
+const calendar = calendarService(
+  {
+    clientId: process.env.MS_CLIENT_ID?.trim(),
+    tenantId: process.env.MS_TENANT_ID?.trim(),
+    timezone: process.env.MS_TIMEZONE || 'W. Europe Standard Time',
+    dataDir: DATA_DIR,
+  },
+  repo,
+)
+startCalendarSyncJob(calendar, Number(process.env.ZENDO_CALENDAR_SYNC_MINUTES || 15))
 const hasUi = existsSync(path.join(DIST, 'index.html'))
-const app = createApp({ repo, calendar, staticDir: hasUi ? DIST : undefined })
+const app = createApp({ repo, calendar: calendar.routes, staticDir: hasUi ? DIST : undefined })
 
 const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: PORT }, () => {
   console.log(`Zendo server on http://127.0.0.1:${PORT} · database ${DB_FILE}${backup ? ` · backup ${backup}` : ''}`)

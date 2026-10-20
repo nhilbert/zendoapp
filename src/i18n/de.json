@@ -334,7 +334,7 @@
     "shortcutGo": "dann t · w · i · c · p · b · r — Ansicht wechseln",
     "shortcutEsc": "schließen",
     "m365": "Microsoft 365",
-    "m365Hint": "Liest deinen Outlook-Kalender über den lokalen Zendo-Server. Anmelde-Tokens bleiben in data/ auf diesem Rechner; der Browser sieht sie nie. Der Kalender wird bei jedem Start von Zendo aktualisiert.",
+    "m365Hint": "Liest deinen Outlook-Kalender über den lokalen Zendo-Server, der ihn beim Start und alle 15 Minuten aktualisiert. Anmelde-Tokens bleiben in data/ auf diesem Rechner; der Browser sieht sie nie.",
     "connect": "Microsoft 365 verbinden",
     "syncNow": "Jetzt synchronisieren",
     "disconnect": "Trennen",

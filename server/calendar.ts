@@ -4,6 +4,8 @@ import { exec } from 'node:child_process'
 import path from 'node:path'
 import { PublicClientApplication, type AccountInfo, type AuthenticationResult } from '@azure/msal-node'
 import { mapGraphEvents, type GraphEvent } from './graph-map.ts'
+import type { Repo } from './repo.ts'
+import { addDaysISO, startOfWeekISO, todayISO } from '../src/domain/dates.ts'
 
 export interface CalendarConfig {
   clientId?: string
@@ -30,15 +32,28 @@ function openBrowser(url: string): Promise<void> {
   return Promise.resolve()
 }
 
+export interface CalendarService {
+  routes: Hono
+  /** Fetches the visible range and writes it into the database. Throws 'not_connected' when no account is signed in. */
+  syncNow: () => Promise<{ total: number; kept: number; removed: number; account: string | null; lastSync: string }>
+  configured: boolean
+}
+
+/** Sync range: last week … five weeks ahead (covers the two-week plan and the review). */
+export function syncRange(): { from: string; to: string } {
+  const from = addDaysISO(startOfWeekISO(todayISO()), -7)
+  return { from, to: addDaysISO(from, 7 + 35) }
+}
+
 /**
- * Microsoft 365 calendar routes (public client, loopback + PKCE). Mounted at /api/calendar.
+ * Microsoft 365 calendar (public client, loopback + PKCE). Routes are mounted at /api/calendar.
  * Without MS_CLIENT_ID / MS_TENANT_ID every route answers 503 not_configured, and the rest of Zendo keeps working.
  */
-export function calendarRoutes(cfg: CalendarConfig): Hono {
+export function calendarService(cfg: CalendarConfig, repo: Repo): CalendarService {
   const app = new Hono()
   if (!cfg.clientId || !cfg.tenantId) {
     app.all('*', (c) => c.json({ error: 'not_configured' }, 503))
-    return app
+    return { routes: app, configured: false, syncNow: async () => { throw new Error('not_configured') } }
   }
   const cacheFile = path.join(cfg.dataDir, 'msal-cache.json')
   const pca = new PublicClientApplication({
@@ -96,6 +111,17 @@ export function calendarRoutes(cfg: CalendarConfig): Hono {
     return items
   }
 
+  const syncNow: CalendarService['syncNow'] = async () => {
+    const token = await getToken(false)
+    const { from, to } = syncRange()
+    const items = await fetchCalendarView(token.accessToken, from, to)
+    const result = repo.replaceEvents('m365', mapGraphEvents(items, { from, to }))
+    const lastSync = new Date().toISOString()
+    repo.setMeta('calendar_last_sync', lastSync)
+    console.log(`Calendar: ${result.total} events synced (${from} … ${to}), ${result.kept} known, ${result.removed} removed`)
+    return { ...result, account: token.account?.username ?? null, lastSync }
+  }
+
   app.onError((err, c) => {
     const message = err.message ?? String(err)
     console.error('Calendar error:', message)
@@ -104,12 +130,17 @@ export function calendarRoutes(cfg: CalendarConfig): Hono {
 
   app.get('/status', async (c) => {
     const account = await getAccount()
-    return c.json({ connected: !!account, account: account?.username ?? null })
+    return c.json({ connected: !!account, account: account?.username ?? null, lastSync: repo.getMeta('calendar_last_sync') ?? null })
   })
+  app.post('/sync', async (c) => c.json(await syncNow()))
   app.post('/connect', async (c) => {
     const result = await getToken(true)
     console.log(`Microsoft 365 connected as ${result.account?.username}`)
-    return c.json({ connected: true, account: result.account?.username ?? null })
+    const synced = await syncNow().catch((err) => {
+      console.error('Calendar: first sync failed:', (err as Error).message)
+      return null
+    })
+    return c.json({ connected: true, account: result.account?.username ?? null, lastSync: synced?.lastSync ?? null })
   })
   app.post('/disconnect', async (c) => {
     const account = await getAccount()
@@ -127,5 +158,20 @@ export function calendarRoutes(cfg: CalendarConfig): Hono {
     console.log(`Calendar: ${events.length} events (${from} … ${to})`)
     return c.json({ events, from, to, account: token.account?.username ?? null })
   })
-  return app
+  return { routes: app, configured: true, syncNow }
+}
+
+/** Sync at start (when signed in) and then every `minutes`; failures are logged and retried next time. */
+export function startCalendarSyncJob(service: CalendarService, minutes: number): void {
+  if (!service.configured || minutes <= 0) return
+  const run = async () => {
+    try {
+      await service.syncNow()
+    } catch (err) {
+      const message = (err as Error).message
+      if (message !== 'not_connected') console.error('Calendar: background sync failed:', message)
+    }
+  }
+  setTimeout(() => void run(), 3000).unref()
+  setInterval(() => void run(), minutes * 60 * 1000).unref()
 }

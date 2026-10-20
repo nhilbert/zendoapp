@@ -37,10 +37,10 @@ export default function SettingsPage() {
         const status = await connect()
         setM365((m) => ({ ...m, status }))
         const r = await syncCalendar()
-        setM365((m) => ({ ...m, message: t('settings.synced', { total: r.total, kept: r.kept, removed: r.removed }) }))
+        setM365((m) => ({ ...m, status: { ...status, lastSync: r.lastSync }, message: t('settings.synced', { total: r.total, kept: r.kept, removed: r.removed }) }))
       } else if (action === 'sync') {
         const r = await syncCalendar()
-        setM365((m) => ({ ...m, message: t('settings.synced', { total: r.total, kept: r.kept, removed: r.removed }) }))
+        setM365((m) => ({ ...m, status: m.status ? { ...m.status, lastSync: r.lastSync } : m.status, message: t('settings.synced', { total: r.total, kept: r.kept, removed: r.removed }) }))
       } else {
         const status = await disconnect()
         updateSettings({ calendar: undefined })
@@ -183,8 +183,8 @@ export default function SettingsPage() {
             ) : m365.status?.connected ? (
               <span className="text-ink">
                 {t('settings.connectedAs', { account: m365.status.account ?? '' })}
-                {settings.calendar?.lastSync && (
-                  <span className="text-ink-3"> · {t('settings.lastSync', { time: new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(settings.calendar.lastSync)) })}</span>
+                {(m365.status.lastSync ?? settings.calendar?.lastSync) && (
+                  <span className="text-ink-3"> · {t('settings.lastSync', { time: new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date((m365.status.lastSync ?? settings.calendar?.lastSync)!)) })}</span>
                 )}
               </span>
             ) : (
