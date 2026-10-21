@@ -26,6 +26,7 @@ import {
   eventsOn,
   isOpen,
   isOverplanned,
+  isWorkable,
   leftoverTasks,
   nextActionOf,
   overdueTasks,
@@ -188,6 +189,8 @@ export class Ops {
     const byId = d.projects.find((p) => p.id === ref)
     if (byId) return byId
     const q = ref.trim().toLowerCase()
+    // an empty name would match every project partially
+    if (!q) throw new BadRequest('project must not be empty (null for a chore)')
     const exact = d.projects.filter((p) => p.name.toLowerCase() === q)
     if (exact.length === 1) return exact[0]
     const current = exact.filter((p) => p.status !== 'archived')
@@ -574,9 +577,11 @@ export class Ops {
     if (input.name !== undefined) {
       if (!input.name.trim()) throw new BadRequest('name must not be empty')
       changed.name = input.name.trim()
-      if (this.nameTaken(d, changed.name, p.id)) throw new BadRequest(`a project named "${changed.name}" exists already`)
     }
     if (input.status) changed.status = input.status
+    // renamed, or back from the archive: the name must be free among current projects
+    const reactivated = p.status === 'archived' && changed.status !== 'archived'
+    if ((input.name !== undefined || reactivated) && this.nameTaken(d, changed.name, p.id)) throw new BadRequest(`a project named "${changed.name}" exists already`)
     if (input.color) changed.color = input.color
     if (input.private !== undefined) changed.private = input.private || undefined
     if (input.goals) changed.goals = this.goalsFrom(input.goals, p.goals)
@@ -593,17 +598,24 @@ export class Ops {
 
   // ---------- plan ----------
 
+  /** What the app's Today and Week pages plan with: chores plus tasks of active and planned projects. */
+  private workable(d: Data): Task[] {
+    const workable = new Set(d.projects.filter(isWorkable).map((p) => p.id))
+    return d.tasks.filter((t) => !t.projectId || workable.has(t.projectId))
+  }
+
   day(date: ISODate = this.today()) {
     checkDate(date, 'date')
     const d = this.read()
     const today = this.today()
     const blocks = visibleBlocks(d.blocks, d.projects, false)
-    const cap = dayCapacity(date, d.settings, d.events, blocks, d.tasks)
-    const planned = tasksPlannedOn(d.tasks, date).sort((a, b) => sortByTime(a, b) || sortTasks(a, b))
-    const leftovers = date === today ? leftoverTasks(d.tasks, today) : []
-    const overdue = date === today ? overdueTasks(d.tasks, today).filter((t) => t.plannedDate !== date) : []
+    const tasks = this.workable(d)
+    const cap = dayCapacity(date, d.settings, d.events, blocks, tasks)
+    const planned = tasksPlannedOn(tasks, date).sort((a, b) => sortByTime(a, b) || sortTasks(a, b))
+    const leftovers = date === today ? leftoverTasks(tasks, today) : []
+    const overdue = date === today ? overdueTasks(tasks, today).filter((t) => t.plannedDate !== date) : []
     const exclude = new Set([...leftovers, ...planned].map((t) => t.id))
-    const cand = candidatesForDay(date, d.tasks, blocks, d.projects, exclude)
+    const cand = candidatesForDay(date, tasks, blocks, d.projects, exclude)
     return compact({
       date,
       weekday: fmtWeekday(date, 'en', 'long'),
@@ -634,13 +646,14 @@ export class Ops {
     if (!(days >= 1 && days <= 28)) throw new BadRequest('days must be 1–28')
     const d = this.read()
     const blocks = visibleBlocks(d.blocks, d.projects, false)
+    const tasks = this.workable(d)
     const range = rangeISO(start, days)
     const end = range[range.length - 1]
     return {
       from: start,
       to: end,
       days: range.map((date) => {
-        const cap = dayCapacity(date, d.settings, d.events, blocks, d.tasks)
+        const cap = dayCapacity(date, d.settings, d.events, blocks, tasks)
         const events = eventsOn(d.events, date).filter((e) => (e.availability ?? 'busy') !== 'free')
         return compact({
           date,
@@ -648,13 +661,13 @@ export class Ops {
           isWorkDay: cap.isWorkDay || undefined,
           meetings: events.map((e) => `${e.allDay ? 'all day' : `${e.start}–${e.end}`} ${e.title}`),
           blocks: blocksOn(blocks, date).map((b) => this.blockView(d, b)),
-          plannedTasks: tasksPlannedOn(d.tasks, date).filter(isOpen).map((t) => t.title),
+          plannedTasks: tasksPlannedOn(tasks, date).filter(isOpen).map((t) => t.title),
           freeMinutes: cap.isWorkDay ? cap.freeMinutes : undefined,
           overplanned: isOverplanned(cap) || undefined,
           fullDay: cap.fullDay || undefined,
         })
       }),
-      deadlines: d.tasks
+      deadlines: tasks
         .filter((t) => isOpen(t) && t.dueDate && t.dueDate >= start && t.dueDate <= end)
         .sort((a, b) => a.dueDate!.localeCompare(b.dueDate!))
         .map((t) => this.taskView(d, t)),

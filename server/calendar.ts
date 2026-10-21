@@ -109,8 +109,10 @@ export function calendarService(cfg: CalendarConfig, repo: Repo): CalendarServic
   }
 
   const fetchCalendarView = async (accessToken: string, from: string, to: string): Promise<GraphEvent[]> => {
+    // Graph reads bounds without an offset as UTC and ignores the timezone header for them: ask for a day
+    // more on each side, mapGraphEvents keeps only the local days from…to.
     let url: string | undefined =
-      `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(`${from}T00:00:00`)}&endDateTime=${encodeURIComponent(`${to}T23:59:59`)}` +
+      `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(`${addDaysISO(from, -1)}T00:00:00`)}&endDateTime=${encodeURIComponent(`${addDaysISO(to, 1)}T23:59:59`)}` +
       `&$select=id,subject,start,end,showAs,sensitivity,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingUrl,onlineMeeting,bodyPreview,location,seriesMasterId&$orderby=start/dateTime&$top=200`
     const items: GraphEvent[] = []
     while (url) {

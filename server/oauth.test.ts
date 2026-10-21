@@ -135,6 +135,17 @@ describe('OAuth for /mcp', () => {
     expect((await authorize(ctx.app, body.client_id, pkce().challenge)).status).toBe(302)
   })
 
+  it('a flood during sign-in does not drop the client that is signing in', async () => {
+    const ctx = setup()
+    const { body } = await register(ctx.app)
+    const { verifier, challenge } = pkce()
+    const { url } = await authorize(ctx.app, body.client_id, challenge)
+    for (let i = 0; i < 205; i++) await register(ctx.app)
+    const code = new URL(url!).searchParams.get('code')!
+    const res = await ctx.app.request('/oauth/token', form({ grant_type: 'authorization_code', code, redirect_uri: CALLBACK, client_id: body.client_id, code_verifier: verifier }))
+    expect(res.status).toBe(200)
+  })
+
   it('hosted, only allowed users from the login proxy header may approve', async () => {
     const ctx = setup({ baseUrl: new URL('https://zendo.example.com'), allowedUsers: ['Norman@Example.de'], userHeader: 'X-Auth-Request-Email' })
     const reg = await ctx.app.request('/oauth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ redirect_uris: [CALLBACK] }) })

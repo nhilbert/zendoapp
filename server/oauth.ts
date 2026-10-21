@@ -271,11 +271,14 @@ export class OAuthServer {
       if (bad.length) return c.json({ error: 'invalid_redirect_uri', error_description: `not allowed: ${bad.join(', ')}` }, 400)
       // Registration is open, and clients register again on every fresh connection: drop those that got no
       // tokens soon after, and beyond the cap the oldest of them, so a flood cannot lock the owner out.
-      const idle = 'id NOT IN (SELECT client_id FROM oauth_tokens)'
-      this.db.prepare(`DELETE FROM oauth_clients WHERE created_at < ? AND ${idle}`).run(new Date(Date.now() - IDLE_CLIENT_TTL_MS).toISOString())
+      // A client in the middle of signing in (consent pending or code issued) is never dropped.
+      const now = Date.now()
+      const signingIn = JSON.stringify([...this.pending.values(), ...this.codes.values()].filter((r) => r.expires >= now).map((r) => r.clientId))
+      const idle = 'id NOT IN (SELECT client_id FROM oauth_tokens) AND id NOT IN (SELECT value FROM json_each(?))'
+      this.db.prepare(`DELETE FROM oauth_clients WHERE created_at < ? AND ${idle}`).run(new Date(now - IDLE_CLIENT_TTL_MS).toISOString(), signingIn)
       this.db
         .prepare(`DELETE FROM oauth_clients WHERE id IN (SELECT id FROM oauth_clients WHERE ${idle} ORDER BY created_at DESC LIMIT -1 OFFSET ?)`)
-        .run(MAX_IDLE_CLIENTS - 1)
+        .run(signingIn, MAX_IDLE_CLIENTS - 1)
       const client: Client = {
         client_id: crypto.randomUUID(),
         client_name: typeof body?.client_name === 'string' ? body.client_name.slice(0, 100) : undefined,

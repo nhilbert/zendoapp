@@ -156,6 +156,28 @@ describe('Ops review fixes', () => {
     expect(() => ops.projectUpdate('Other', { name: 'workshop' })).toThrow(/exists already/)
   })
 
+  it('refuses an empty project reference and a duplicate name on reactivation', () => {
+    const { ops } = setup()
+    const old = ops.projectCreate({ name: 'Website', status: 'archived' })
+    ops.projectCreate({ name: 'Website' })
+    const t = ops.taskCreate({ title: 'x' })
+    expect(() => ops.taskUpdate(t.id!, { project: ' ' })).toThrow(/must not be empty/)
+    expect(() => ops.projectUpdate(old.id!, { status: 'active' })).toThrow(/exists already/)
+  })
+
+  it('plans the day and week only with workable tasks, as the app does', () => {
+    const { repo, ops } = setup()
+    ops.projectCreate({ name: 'Old', status: 'archived' })
+    ops.projectCreate({ name: 'Live' })
+    ops.taskCreate({ title: 'Live work', project: 'Live', plannedDate: TODAY, estimateMinutes: 60 })
+    const old = (repo.loadState().projects as { id: string; name: string }[]).find((p) => p.name === 'Old')!
+    repo.applyChanges({ upserts: { tasks: [{ id: 'z', title: 'Archived work', status: 'todo', projectId: old.id, plannedDate: TODAY, dueDate: TODAY, estimateMinutes: 120, notes: [], order: 1, createdAt: '', updatedAt: '' }] } })
+    const day = JSON.stringify(ops.day(TODAY))
+    expect(day).toContain('Live work')
+    expect(day).not.toContain('Archived work')
+    expect(JSON.stringify(ops.week(TODAY))).not.toContain('Archived work')
+  })
+
   it('creates tasks logged as done as completed, and refuses moving into archived projects', () => {
     const { ops } = setup()
     expect(ops.taskCreateMany([{ title: 'Sent offer', status: 'done' }])[0]).toMatchObject({ status: 'done' })
