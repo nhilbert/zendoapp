@@ -109,6 +109,7 @@ Priority: **M** must, **S** should, **C** could.
 - **DAY-5 (S) [ ]** "Top 3 for today" marker.
 - **DAY-6 (M) [P]** Rollover: on today, open tasks planned for earlier days are listed once under "Left over" (oldest first, not repeated among the candidates). Per task: plan for today (time of day dropped), back to the list (plan removed), or tick off; or all at once. Nothing moves without a decision.
 - **DAY-7 (M) [P]** The day's blocks from the week plan are shown on Today: project (or chores), share of the day and effective hours, the block's note and the project meetings it contains; on work days without blocks a quiet link to the week view.
+- **DAY-8 (M) [P]** Take a planned task off the day without extra controls: on a phone swipe it right (to the next day, time of day dropped) or left (off the plan, back to the lists); the row slides over a plain tint, no icons or labels. On a computer drag it onto › (next day) or onto the candidates (off the plan). Works for list rows and timeline blocks; tap still opens the task, a vertical swipe still scrolls, long-press still drags.
 
 ### 5.9 Daily execution
 - **EXE-1 (M) [P]** Check off actions from the timeline or the list; completed items stay visible but struck through.

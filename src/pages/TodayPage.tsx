@@ -10,7 +10,7 @@ import { type DayCapacity, blocksOn, candidatesForDay, dayCapacity, eventsOn, is
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
-import { Draggable, Droppable, collision, useDndSensors } from '@/components/dnd'
+import { Draggable, Droppable, Swipeable, collision, useDndSensors } from '@/components/dnd'
 import { Button, Checkbox, Chip, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone } from '@/components/ui'
 import { ProjectChip, ProjectDot, TaskMeta, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 import { JoinLink } from '@/components/JoinLink'
@@ -36,6 +36,7 @@ export default function TodayPage() {
   const settings = safeTimes(useStore((s) => s.settings))
   const reviews = useStore((s) => s.reviews)
   const scheduleTask = useStore((s) => s.scheduleTask)
+  const rescheduleTasks = useStore((s) => s.rescheduleTasks)
   const saveReview = useStore((s) => s.saveReview)
   const openTask = useUi((s) => s.openTask)
   const openEvent = useUi((s) => s.openEvent)
@@ -100,7 +101,12 @@ export default function TodayPage() {
     if (!over) return
     if (over.startsWith('slot:')) scheduleTask(id, date, over.slice(5))
     else if (over === 'untimed') scheduleTask(id, date)
+    else if (over === 'next-day') postpone(id)
+    else if (over === 'unplan') unplan(id)
   }
+  // Off the day: back to the lists, or on to the day after (time of day dropped, as in the rollover).
+  const unplan = (id: string) => rescheduleTasks([id], undefined)
+  const postpone = (id: string) => rescheduleTasks([id], addDaysISO(date, 1))
   const activeTask = activeId ? tasks.find((x) => x.id === activeId) : undefined
 
   const title = fmtDate(date, locale, { weekday: 'long', day: 'numeric', month: 'long' })
@@ -109,48 +115,52 @@ export default function TodayPage() {
   }
 
   return (
-    <div className="flex flex-col md:h-[calc(100dvh-5rem)] md:min-h-[520px]">
-      <header className="mb-4 flex items-end justify-between gap-4 md:mb-6 md:gap-6">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{date === today ? t('today.title') : title}</h1>
-            {date === today && <span className="text-[14px] text-ink-3">{title}</span>}
+    // The context spans the header too: › is a drop target (next day).
+    <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      <div className="flex flex-col md:h-[calc(100dvh-5rem)] md:min-h-[520px]">
+        <header className="mb-4 flex items-end justify-between gap-4 md:mb-6 md:gap-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{date === today ? t('today.title') : title}</h1>
+              {date === today && <span className="text-[14px] text-ink-3">{title}</span>}
+            </div>
+            <p className="tnum mt-1 text-[13px] text-ink-2">
+              {t('today.capacity', {
+                meetings: fmtHours(cap.meetingMinutes, locale),
+                planned: fmtHours(cap.plannedTaskMinutes, locale),
+                free: fmtHours(Math.max(0, cap.workMinutes - cap.meetingMinutes - cap.plannedTaskMinutes), locale),
+              })}
+            </p>
           </div>
-          <p className="tnum mt-1 text-[13px] text-ink-2">
-            {t('today.capacity', {
-              meetings: fmtHours(cap.meetingMinutes, locale),
-              planned: fmtHours(cap.plannedTaskMinutes, locale),
-              free: fmtHours(Math.max(0, cap.workMinutes - cap.meetingMinutes - cap.plannedTaskMinutes), locale),
-            })}
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          {date !== today && (
-            <Button variant="ghost" size="sm" onClick={() => setDate(today)}>
-              {t('common.today')}
-            </Button>
-          )}
-          <IconButton label="‹" onClick={() => setDate(addDaysISO(date, -1))}>
-            <ChevronLeft size={16} />
-          </IconButton>
-          <IconButton label="›" onClick={() => setDate(addDaysISO(date, 1))}>
-            <ChevronRight size={16} />
-          </IconButton>
-        </div>
-      </header>
+          <div className="flex items-center gap-1">
+            {date !== today && (
+              <Button variant="ghost" size="sm" onClick={() => setDate(today)}>
+                {t('common.today')}
+              </Button>
+            )}
+            <IconButton label="‹" onClick={() => setDate(addDaysISO(date, -1))}>
+              <ChevronLeft size={16} />
+            </IconButton>
+            {/* dropping a planned task on › moves it to the next day */}
+            <Droppable id="next-day" className="rounded-md" overClassName="bg-accent-soft [&>button]:text-ink">
+              <IconButton label="›" onClick={() => setDate(addDaysISO(date, 1))}>
+                <ChevronRight size={16} />
+              </IconButton>
+            </Droppable>
+          </div>
+        </header>
 
-      <div className="mb-4 md:hidden">
-        <Segmented<'plan' | 'timeline'>
-          value={phoneView}
-          onChange={setPhoneView}
-          options={[
-            { value: 'plan', label: t('today.viewList') },
-            { value: 'timeline', label: t('today.viewTimeline') },
-          ]}
-        />
-      </div>
+        <div className="mb-4 md:hidden">
+          <Segmented<'plan' | 'timeline'>
+            value={phoneView}
+            onChange={setPhoneView}
+            options={[
+              { value: 'plan', label: t('today.viewList') },
+              { value: 'timeline', label: t('today.viewTimeline') },
+            ]}
+          />
+        </div>
 
-      <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 md:grid-cols-[minmax(0,1fr)_360px] md:gap-12">
           {/* Timeline */}
           <section ref={sectionRef} className={cx('min-h-0 overflow-x-hidden pr-1 pt-2 md:block md:overflow-y-auto', phoneView === 'timeline' ? 'block' : 'hidden')}>
@@ -190,11 +200,11 @@ export default function TodayPage() {
                 </div>
                 <div className="absolute inset-y-0 right-0 w-[62%] pl-1">
                   {timed.map((x) => (
-                    <div key={x.id} className="pointer-events-auto absolute left-1 right-0" style={{ top: y(x.plannedStart!), height: Math.max(px, ((x.estimateMinutes ?? 30) / SLOT) * px) }}>
+                    <Swipeable key={x.id} onRight={() => postpone(x.id)} onLeft={() => unplan(x.id)} className="pointer-events-auto absolute left-1 right-0 rounded-md" style={{ top: y(x.plannedStart!), height: Math.max(px, ((x.estimateMinutes ?? 30) / SLOT) * px) }}>
                       <Draggable id={`task:${x.id}`} className="h-full" onClick={() => openTask(x.id)}>
                         <TaskBlock task={x} />
                       </Draggable>
-                    </div>
+                    </Swipeable>
                   ))}
                 </div>
                 {date === today && hhmmToMinutes(nowHHMM()) >= gridStart && hhmmToMinutes(nowHHMM()) <= gridEnd && (
@@ -224,9 +234,11 @@ export default function TodayPage() {
                   <ul className="flex flex-col">
                     {untimed.map((x) => (
                       <li key={x.id}>
-                        <Draggable id={`task:${x.id}`} className="rounded-lg" onClick={() => openTask(x.id)}>
-                          <PlanRow task={x} />
-                        </Draggable>
+                        <Swipeable onRight={() => postpone(x.id)} onLeft={() => unplan(x.id)} className="relative rounded-lg">
+                          <Draggable id={`task:${x.id}`} className="rounded-lg" onClick={() => openTask(x.id)}>
+                            <PlanRow task={x} />
+                          </Draggable>
+                        </Swipeable>
                       </li>
                     ))}
                   </ul>
@@ -234,7 +246,8 @@ export default function TodayPage() {
               </Droppable>
             </div>
 
-            <div>
+            {/* dropping a planned task here takes it off the day */}
+            <Droppable id="unplan" className="-mx-2 rounded-xl px-2 transition-colors" overClassName="bg-surface-2">
               <SectionLabel>{t('today.candidates')}</SectionLabel>
               <div className="flex flex-col gap-4">
                 <CandidateGroup label={t('today.overdue')} items={cands.overdue} tone="rose" date={date} />
@@ -270,7 +283,7 @@ export default function TodayPage() {
                   <p className="text-[13px] text-ink-3">{t('today.noCandidates')}</p>
                 )}
               </div>
-            </div>
+            </Droppable>
 
             {missingNext.length > 0 && (
               <div>
@@ -290,8 +303,8 @@ export default function TodayPage() {
           </aside>
         </div>
         <DragOverlay dropAnimation={null}>{activeTask ? <PlanRow task={activeTask} overlay /> : null}</DragOverlay>
-      </DndContext>
-    </div>
+      </div>
+    </DndContext>
   )
 }
 
