@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   type CollisionDetection,
@@ -23,6 +23,8 @@ import { IconButton, PageHeader, Segmented, cx, isTyping, useIsPhone, useLocalSt
 import { ProjectDot, TaskMeta, projectVars, useProjectMap } from '@/components/TaskBits'
 
 const CHORES = '__chores__'
+/** color null = chores (neutral dot); no color = "all projects" (no dot). */
+type ScopeItem = { id: string; name: string; color?: ProjectColor | null }
 type Indicator = { cardId: string; position: 'before' | 'after' } | null
 
 /** Prefer the card under the pointer (for positional drops), then the column, then any overlap. */
@@ -47,7 +49,12 @@ export default function BoardPage() {
   const sensors = useDndSensors()
   const isPhone = useIsPhone()
   // One project at a time: chores, then the active and planned projects; "all" only through the picker.
-  const scopes = [CHORES, ...projects.filter((p) => p.status === 'active' || p.status === 'planned').map((p) => p.id)]
+  const scopeItems: ScopeItem[] = [
+    { id: CHORES, name: t('board.chores'), color: null },
+    ...projects.filter((p) => p.status === 'active' || p.status === 'planned').map((p) => ({ id: p.id, name: p.name, color: p.color })),
+  ]
+  const scopes = scopeItems.map((i) => i.id)
+  const pickItems: ScopeItem[] = [...scopeItems, { id: '', name: t('board.all') }]
   // Per device: the board opens where it was left (first time: chores), and on phones as a list.
   const [stored, setFilter] = useLocalState('zendo.board.scope', CHORES)
   const filter = stored === '' || scopes.includes(stored) ? stored : CHORES
@@ -62,6 +69,7 @@ export default function BoardPage() {
   const [unfolded, setUnfolded] = useState<TaskStatus[]>([])
   const [picking, setPicking] = useState(false)
   const pickerButton = useRef<HTMLButtonElement>(null)
+  const pickerId = useId()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [indicator, setIndicator] = useState<Indicator>(null)
   const indicatorRef = useRef<Indicator>(null)
@@ -119,8 +127,7 @@ export default function BoardPage() {
   }
 
   const activeTask = activeId ? tasks.find((x) => x.id === activeId) : undefined
-  const scopeProject = projects.find((p) => p.id === filter)
-  const scopeName = filter === '' ? t('board.all') : filter === CHORES ? t('board.chores') : (scopeProject?.name ?? '')
+  const scope = pickItems.find((i) => i.id === filter)
 
   // [ and ] step through the projects.
   useEffect(() => {
@@ -151,34 +158,15 @@ export default function BoardPage() {
                 onClick={() => setPicking((v) => !v)}
                 aria-haspopup="listbox"
                 aria-expanded={picking}
+                aria-controls={picking ? pickerId : undefined}
                 title={t('board.pick')}
                 className="flex min-w-0 max-w-[62vw] items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-2 md:max-w-[340px]"
               >
-                {filter !== '' && <ProjectDot color={scopeProject?.color ?? null} />}
-                <span className="truncate text-[15px] font-medium">{scopeName}</span>
+                {scope?.color !== undefined && <ProjectDot color={scope.color} />}
+                <span className="truncate text-[15px] font-medium">{scope?.name}</span>
               </button>
               {picking && (
-                <ScopeMenu
-                  items={[
-                    { id: CHORES, name: t('board.chores'), color: null },
-                    ...scopes.slice(1).map((id) => {
-                      const p = projects.find((x) => x.id === id)
-                      return { id, name: p?.name ?? '', color: p?.color ?? null }
-                    }),
-                    { id: '', name: t('board.all') },
-                  ]}
-                  value={filter}
-                  label={t('board.pick')}
-                  onPick={(id) => {
-                    setFilter(id)
-                    setPicking(false)
-                    pickerButton.current?.focus()
-                  }}
-                  onClose={() => {
-                    setPicking(false)
-                    pickerButton.current?.focus()
-                  }}
-                />
+                <ScopeMenu id={pickerId} items={pickItems} value={filter} label={t('board.pick')} anchor={pickerButton} onPick={setFilter} onClose={() => setPicking(false)} />
               )}
             </div>
             <IconButton label={t('board.next')} onClick={() => step(1)}>
@@ -269,25 +257,43 @@ export default function BoardPage() {
 }
 
 /**
- * The list behind the project name: like a native picker (arrow keys, Enter, Escape, click outside),
- * but with the project colours, which a native select cannot show. color null = chores (neutral dot);
- * no color = "all projects" (no dot).
+ * The list behind the project name: like a native picker (arrows, Home/End, typing a name's first letters,
+ * Enter or Space, Escape, Tab or click away), but with the project colours, which a native select cannot show.
  */
 function ScopeMenu({
+  id,
   items,
   value,
   label,
+  anchor,
   onPick,
   onClose,
 }: {
-  items: { id: string; name: string; color?: ProjectColor | null }[]
+  id: string
+  items: ScopeItem[]
   value: string
   label: string
+  anchor: RefObject<HTMLButtonElement | null>
   onPick: (id: string) => void
   onClose: () => void
 }) {
   const ref = useRef<HTMLUListElement>(null)
-  const [active, setActive] = useState(() => Math.max(0, items.findIndex((i) => i.id === value)))
+  // The highlight follows an id, not a row number, so it survives the list changing underneath.
+  const [activeId, setActiveId] = useState(value)
+  useEffect(() => setActiveId(value), [value])
+  const found = items.findIndex((i) => i.id === activeId)
+  const active = found >= 0 ? found : Math.max(0, items.findIndex((i) => i.id === value))
+  const move = (i: number) => setActiveId(items[Math.max(0, Math.min(items.length - 1, i))].id)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  // Escape and picking hand the focus back to the name; Tab and clicks leave it where the user put it.
+  const close = (refocus: boolean) => {
+    closeRef.current()
+    if (refocus) anchor.current?.focus()
+  }
+  const typed = useRef({ text: '', at: 0 })
+  const [left, setLeft] = useState(0)
+
   useEffect(() => ref.current?.focus(), [])
   useEffect(() => {
     ref.current?.children[active]?.scrollIntoView({ block: 'nearest' })
@@ -295,35 +301,79 @@ function ScopeMenu({
   useEffect(() => {
     // the toggle button sits next to the list, so it counts as inside
     const onDown = (e: PointerEvent) => {
-      if (!ref.current?.parentElement?.contains(e.target as Node)) onClose()
+      if (!ref.current?.parentElement?.contains(e.target as Node)) closeRef.current()
     }
     document.addEventListener('pointerdown', onDown)
     return () => document.removeEventListener('pointerdown', onDown)
-  }, [onClose])
+  }, [])
+  // Start under the name, shifted left as far as needed to stay on screen.
+  useLayoutEffect(() => {
+    const place = () => {
+      const list = ref.current
+      const box = list?.parentElement?.getBoundingClientRect()
+      if (!list || !box) return
+      const gutter = 16
+      const x = Math.max(gutter, Math.min(box.left, window.innerWidth - list.offsetWidth - gutter))
+      setLeft(x - box.left)
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [])
+
+  const typing = () => Date.now() - typed.current.at < 700
+  const typeAhead = (key: string) => {
+    const text = (typing() ? typed.current.text : '') + key.toLowerCase()
+    typed.current = { text, at: Date.now() }
+    // a repeated single letter steps through the names starting with it, as in a native select
+    const repeat = text.length > 1 && [...text].every((c) => c === text[0])
+    const prefix = repeat ? text[0] : text
+    const from = repeat || text.length === 1 ? active + 1 : active
+    const order = items.map((_, k) => (from + k) % items.length)
+    const hit = order.find((k) => items[k].name.toLowerCase().startsWith(prefix))
+    if (hit !== undefined) move(hit)
+  }
+
   return (
     <ul
       ref={ref}
+      id={id}
       role="listbox"
       aria-label={label}
+      aria-activedescendant={`${id}-${active}`}
       tabIndex={-1}
+      onBlur={(e) => {
+        // a click elsewhere is the pointerdown listener's; here only focus moving on (Tab)
+        if (e.relatedTarget && !e.currentTarget.parentElement?.contains(e.relatedTarget)) close(false)
+      }}
       onKeyDown={(e) => {
-        if (e.key === 'ArrowDown') setActive((a) => Math.min(items.length - 1, a + 1))
-        else if (e.key === 'ArrowUp') setActive((a) => Math.max(0, a - 1))
-        else if (e.key === 'Enter') onPick(items[active].id)
-        else if (e.key === 'Escape') onClose()
-        else return
+        if (e.key === 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return
+        if (e.key === 'ArrowDown') move(active + 1)
+        else if (e.key === 'ArrowUp') move(active - 1)
+        else if (e.key === 'Home' || e.key === 'PageUp') move(0)
+        else if (e.key === 'End' || e.key === 'PageDown') move(items.length - 1)
+        else if (e.key === 'Enter' || (e.key === ' ' && !typing())) {
+          onPick(items[active].id)
+          close(true)
+        } else if (e.key === 'Escape') close(true)
+        else if (e.key.length === 1) typeAhead(e.key)
         e.preventDefault()
         e.stopPropagation()
       }}
-      className="card fade-in absolute left-0 top-full z-30 mt-1 max-h-[60vh] w-72 max-w-[85vw] md:w-96 overflow-y-auto p-1 shadow-[var(--shadow)] outline-none md:left-auto md:right-0"
+      style={{ left }}
+      className="card fade-in absolute top-full z-30 mt-1 max-h-[60vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto p-1 shadow-[var(--shadow)] outline-none md:w-96"
     >
       {items.map((item, i) => (
         <li
           key={item.id || 'all'}
+          id={`${id}-${i}`}
           role="option"
           aria-selected={item.id === value}
-          onPointerEnter={() => setActive(i)}
-          onClick={() => onPick(item.id)}
+          onPointerEnter={() => setActiveId(item.id)}
+          onClick={() => {
+            onPick(item.id)
+            close(true)
+          }}
           className={cx('flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[14px]', i === active && 'bg-surface-2', item.id === value ? 'font-medium text-ink' : 'text-ink-2')}
         >
           {item.color !== undefined ? <ProjectDot color={item.color} /> : <span className="w-2 shrink-0" />}

@@ -5,12 +5,12 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
 
-/** Keyboard shortcuts stay quiet while the user types in a field. */
+/** Keyboard shortcuts stay quiet while the user types in a field or a pick list has the keys. */
 export function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el) return false
   const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable || el.getAttribute?.('role') === 'listbox'
 }
 
 type ButtonProps = ComponentProps<'button'> & {
