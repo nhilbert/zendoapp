@@ -19,7 +19,7 @@ import { useStore } from '@/store/useStore'
 import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, useDndSensors } from '@/components/dnd'
-import { IconButton, PageHeader, Segmented, cx, isTyping, useIsPhone, useLocalState } from '@/components/ui'
+import { Checkbox, IconButton, PageHeader, Segmented, cx, isTyping, useIsPhone, useLocalState } from '@/components/ui'
 import { ProjectDot, TaskMeta, projectVars, useProjectMap } from '@/components/TaskBits'
 
 const CHORES = '__chores__'
@@ -395,17 +395,27 @@ function ScopeMenu({
 }
 
 /** hideProject: with one project (or chores) chosen, every card would repeat its name. */
+const stop = (e: React.SyntheticEvent) => e.stopPropagation()
+
 function Card({ task, dragging, hideProject }: { task: Task; dragging?: boolean; hideProject?: boolean }) {
+  const { t } = useTranslation()
   const projectMap = useProjectMap()
+  const completeTask = useStore((s) => s.completeTask)
   const project = task.projectId ? projectMap.get(task.projectId) : null
   return (
     <div
       style={projectVars(project?.color ?? null)}
-      className={cx('card px-3 py-2.5 transition-shadow', dragging ? 'rotate-[0.5deg] shadow-[var(--shadow)]' : 'hover:shadow-[var(--shadow)]')}
+      className={cx('card flex items-start gap-2.5 px-3 py-2.5 transition-shadow', dragging ? 'rotate-[0.5deg] shadow-[var(--shadow)]' : 'hover:shadow-[var(--shadow)]')}
     >
-      {task.priority === 'high' && task.status !== 'done' && <span className="mb-1 block h-1 w-6 rounded-full bg-amber" />}
-      <div className={cx('text-[13.5px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
-      <TaskMeta task={task} hideProject={hideProject} className="mt-1.5" />
+      {/* the circle ticks off (or reopens) without dragging to Done; it neither starts a drag nor opens the task */}
+      <span className="mt-px flex" onPointerDown={stop} onMouseDown={stop} onTouchStart={stop} onKeyDown={stop}>
+        <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} label={t('status.done')} />
+      </span>
+      <div className="min-w-0 flex-1">
+        {task.priority === 'high' && task.status !== 'done' && <span className="mb-1 block h-1 w-6 rounded-full bg-amber" />}
+        <div className={cx('text-[13.5px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
+        <TaskMeta task={task} hideProject={hideProject} className="mt-1.5" />
+      </div>
     </div>
   )
 }
