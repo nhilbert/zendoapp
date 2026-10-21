@@ -80,11 +80,20 @@ export default function SettingsPage() {
   }
 
   const onIcs = async (file: File) => {
-    const text = await file.text()
-    const result = parseIcs(text)
-    const { total, kept, removed } = importEvents(result.events, 'ics')
-    setIcsMsg(t('settings.imported', { total, kept, removed, skipped: result.skippedRecurring }))
-    if (icsRef.current) icsRef.current.value = ''
+    try {
+      const result = parseIcs(await file.text())
+      // The import replaces the previous one: a file without events (wrong file, empty export) must not wipe it.
+      if (!result.events.length) {
+        setIcsMsg(t('settings.icsEmpty'))
+        return
+      }
+      const { total, kept, removed } = importEvents(result.events, 'ics')
+      setIcsMsg(t('settings.imported', { total, kept, removed, skipped: result.skippedRecurring }))
+    } catch (err) {
+      setIcsMsg(t('settings.icsFailed', { error: err instanceof Error ? err.message : String(err) }))
+    } finally {
+      if (icsRef.current) icsRef.current.value = ''
+    }
   }
 
   const downloadJson = (text: string, name: string) => {

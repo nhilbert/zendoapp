@@ -48,11 +48,14 @@ export function completeWithRecurrence(tasks: Task[], target: Task): Task[] {
   return result
 }
 
-/** Undo a completion: drop the untouched occurrence it spawned and restore the previous status. */
+/** A spawned occurrence nobody has edited since (no notes, never updated): undoing the completion may drop it. */
+const untouched = (t: Task) => t.updatedAt === t.createdAt && !t.notes?.length
+
+/** Undo a completion: drop the untouched occurrence it spawned (an edited one stays) and restore the previous status. */
 export function uncomplete(tasks: Task[], target: Task, status?: TaskStatus): Task[] {
   const restored = status ?? target.statusBeforeDone ?? 'todo'
   let result = tasks
-    .filter((t) => !(t.spawnedFrom === target.id && t.status !== 'done'))
+    .filter((t) => !(t.spawnedFrom === target.id && t.status !== 'done' && untouched(t)))
     .map((t) => (t.id === target.id ? { ...t, status: restored, completedAt: undefined, statusBeforeDone: undefined, updatedAt: now() } : t))
   if (restored === 'next') result = withSingleNext(result, target.id, target.projectId)
   return result

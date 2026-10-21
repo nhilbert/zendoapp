@@ -155,6 +155,40 @@ describe('undoing a completion', () => {
   })
 })
 
+describe('undoing a completion, more', () => {
+  it('drags out of Done on the board without leaving a second copy', () => {
+    const s = useStore.getState()
+    const chore = s.addTask({ title: 'Weekly', projectId: null, status: 'todo', recurrence: 'weekly', dueDate: addDaysISO(todayISO(), 1) })
+    s.reorderTask(chore.id, 'done', null)
+    expect(useStore.getState().tasks.filter((t) => t.title === 'Weekly')).toHaveLength(2)
+    s.reorderTask(chore.id, 'todo', null)
+    const left = useStore.getState().tasks.filter((t) => t.title === 'Weekly')
+    expect(left).toHaveLength(1)
+    expect(left[0].completedAt).toBeUndefined()
+    expect(left[0].statusBeforeDone).toBeUndefined()
+  })
+  it('keeps a spawned occurrence the user has already worked on', () => {
+    const s = useStore.getState()
+    const chore = s.addTask({ title: 'Report', projectId: null, status: 'todo', recurrence: 'weekly', dueDate: addDaysISO(todayISO(), 1) })
+    s.completeTask(chore.id)
+    const spawned = useStore.getState().tasks.find((t) => t.spawnedFrom === chore.id)!
+    s.addTaskNote(spawned.id, 'already started')
+    s.completeTask(chore.id, false)
+    const left = useStore.getState().tasks.filter((t) => t.title === 'Report')
+    expect(left).toHaveLength(2)
+    expect(left.find((t) => t.id === spawned.id)!.notes[0].text).toBe('already started')
+  })
+  it('a drag sends only the cards whose place changed', () => {
+    const s = useStore.getState()
+    const [a, b, c] = ['a', 'b', 'c'].map((title) => s.addTask({ title, projectId: null, status: 'todo' }))
+    s.reorderTask(a.id, 'todo', null) // a to the end: every place changes once
+    const before = useStore.getState().tasks
+    s.reorderTask(c.id, 'todo', a.id) // c already sits before a
+    const after = useStore.getState().tasks
+    expect(after.find((t) => t.id === b.id)).toBe(before.find((t) => t.id === b.id))
+  })
+})
+
 describe('JSON import', () => {
   it('migrates old exports and rejects foreign files', () => {
     const s = useStore.getState()

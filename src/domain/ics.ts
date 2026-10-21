@@ -29,26 +29,41 @@ function unfold(text: string): string[] {
   return lines
 }
 
+/** Split at `sep` outside double quotes (parameter values may be quoted and contain : ; ,). */
+function splitOutsideQuotes(text: string, sep: string, limit = Infinity): string[] {
+  const parts: string[] = []
+  let quoted = false
+  let start = 0
+  for (let i = 0; i < text.length && parts.length < limit - 1; i++) {
+    if (text[i] === '"') quoted = !quoted
+    else if (text[i] === sep && !quoted) {
+      parts.push(text.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts
+}
+
 function parseProp(line: string): { name: string; params: Record<string, string>; value: string } | null {
-  const idx = line.indexOf(':')
-  if (idx < 0) return null
-  const left = line.slice(0, idx)
-  const value = line.slice(idx + 1)
-  const [name, ...paramParts] = left.split(';')
+  const [left, value] = splitOutsideQuotes(line, ':', 2)
+  if (value === undefined) return null
+  const [name, ...paramParts] = splitOutsideQuotes(left, ';')
   const params: Record<string, string> = {}
   for (const p of paramParts) {
-    const [k, v] = p.split('=')
-    if (k && v) params[k.toUpperCase()] = v
+    const eq = p.indexOf('=')
+    if (eq > 0) params[p.slice(0, eq).toUpperCase()] = p.slice(eq + 1).replace(/^"(.*)"$/, '$1')
   }
   return { name: name.toUpperCase(), params, value }
 }
 
-function parseDateTime(value: string, params: Record<string, string>): { date: ISODate; time?: string } {
-  if (params.VALUE === 'DATE' || /^\d{8}$/.test(value)) {
+/** null for a value that is no date: such an event is skipped rather than filed under a made-up day. */
+function parseDateTime(value: string, params: Record<string, string>): { date: ISODate; time?: string } | null {
+  if (/^\d{8}$/.test(value) || (params.VALUE === 'DATE' && /^\d{8}/.test(value))) {
     return { date: `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` }
   }
   const m = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?(Z)?$/)
-  if (!m) return { date: value.slice(0, 10) }
+  if (!m) return null
   const [, y, mo, d, h, mi, s, z] = m
   if (z) {
     const utc = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s || 0)))
@@ -109,9 +124,19 @@ export function parseIcs(text: string): IcsImportResult {
   const events: CalendarEvent[] = []
   let skippedRecurring = 0
   let cur: Record<string, { params: Record<string, string>; value: string }> | null = null
+  let nested = 0 // inside a component of the event (VALARM …): its SUMMARY/DESCRIPTION are not the event's
   for (const line of lines) {
     if (line === 'BEGIN:VEVENT') {
       cur = {}
+      nested = 0
+      continue
+    }
+    if (cur && line.startsWith('BEGIN:')) {
+      nested += 1
+      continue
+    }
+    if (cur && nested && line.startsWith('END:')) {
+      nested -= 1
       continue
     }
     if (line === 'END:VEVENT' && cur) {
@@ -122,9 +147,9 @@ export function parseIcs(text: string): IcsImportResult {
         safeJoinUrl(cur['X-MICROSOFT-SKYPETEAMSMEETINGURL']?.value) ?? findMeetingUrl(location, cur.URL?.value, cur.DESCRIPTION ? unescapeText(cur.DESCRIPTION.value) : undefined)
       if (cur.RRULE) skippedRecurring += 1
       const cancelled = (cur.STATUS?.value ?? '').toUpperCase() === 'CANCELLED'
-      if (cur.DTSTART && !cancelled) {
-        const start = parseDateTime(cur.DTSTART.value, cur.DTSTART.params)
-        const end = cur.DTEND ? parseDateTime(cur.DTEND.value, cur.DTEND.params) : start
+      const start = cur.DTSTART ? parseDateTime(cur.DTSTART.value, cur.DTSTART.params) : null
+      if (start && !cancelled) {
+        const end = (cur.DTEND && parseDateTime(cur.DTEND.value, cur.DTEND.params)) || start
         const allDay = !start.time
         const uid = cur.UID?.value ?? `${summary}@${start.date}`
         const base = {
@@ -146,7 +171,7 @@ export function parseIcs(text: string): IcsImportResult {
       cur = null
       continue
     }
-    if (cur) {
+    if (cur && !nested) {
       const p = parseProp(line)
       if (p) cur[p.name] = { params: p.params, value: p.value }
     }

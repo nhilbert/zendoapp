@@ -208,20 +208,23 @@ export const useStore = create<State>()(
           if (!target) return {}
           let tasks: Task[]
           if (status === 'done' && target.status !== 'done') tasks = completeWithRecurrence(s.tasks, target)
-          else tasks = s.tasks.map((t) => (t.id === id ? { ...t, status, updatedAt: now(), completedAt: status === 'done' ? t.completedAt : undefined } : t))
+          // out of Done: a real undo, so the occurrence it spawned does not stay as a second copy
+          else if (target.status === 'done' && status !== 'done') tasks = uncomplete(s.tasks, target, status)
+          else tasks = s.tasks.map((t) => (t.id === id ? { ...t, status, updatedAt: now() } : t))
           if (status === 'next') tasks = withSingleNext(tasks, id, target.projectId)
           const moved = tasks.find((t) => t.id === id)!
           const column = tasks.filter((t) => t.status === status && t.id !== id).sort((a, b) => a.order - b.order)
           const at = beforeId ? column.findIndex((t) => t.id === beforeId) : -1
           column.splice(at >= 0 ? at : column.length, 0, moved)
           const orders = new Map(column.map((t, i) => [t.id, (i + 1) * 1000]))
-          return { tasks: tasks.map((t) => (orders.has(t.id) ? { ...t, order: orders.get(t.id)! } : t)) }
+          // only records whose place changed become new objects (and are sent)
+          return { tasks: tasks.map((t) => (orders.has(t.id) && orders.get(t.id) !== t.order ? { ...t, order: orders.get(t.id)! } : t)) }
         }),
       sortColumnByUrgency: (status) =>
         set((s) => {
           const column = s.tasks.filter((t) => t.status === status).sort(urgencyComparator(todayISO()))
           const orders = new Map(column.map((t, i) => [t.id, (i + 1) * 1000]))
-          return { tasks: s.tasks.map((t) => (orders.has(t.id) ? { ...t, order: orders.get(t.id)!, updatedAt: now() } : t)) }
+          return { tasks: s.tasks.map((t) => (orders.has(t.id) && orders.get(t.id) !== t.order ? { ...t, order: orders.get(t.id)!, updatedAt: now() } : t)) }
         }),
       completeTask: (id, done = true) =>
         set((s) => {

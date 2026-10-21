@@ -123,3 +123,22 @@ describe('join links from ICS', () => {
     expect(none.joinUrl).toBeUndefined()
   })
 })
+
+describe('ICS details', () => {
+  const ics = (body: string) => `BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:D1\n${body}\nEND:VEVENT\nEND:VCALENDAR\n`
+  it('ignores the properties of alarms inside the event', () => {
+    const [ev] = parseIcs(
+      ics('SUMMARY:Steering group\nDTSTART:20261020T100000\nDTEND:20261020T110000\nDESCRIPTION:Join https://us02web.zoom.us/j/1\nBEGIN:VALARM\nACTION:DISPLAY\nSUMMARY:Alarm notification\nDESCRIPTION:Reminder\nEND:VALARM'),
+    ).events
+    expect(ev.title).toBe('Steering group')
+    expect(ev.joinUrl).toBe('https://us02web.zoom.us/j/1')
+  })
+  it('reads quoted parameters that contain a colon', () => {
+    const [ev] = parseIcs(ics('SUMMARY:Call\nDTSTART;TZID="(UTC+01:00) Amsterdam, Berlin":20261023T090000\nDTEND;TZID="(UTC+01:00) Amsterdam, Berlin":20261023T100000')).events
+    expect([ev.date, ev.start, ev.end, ev.allDay]).toEqual(['2026-10-23', '09:00', '10:00', false])
+  })
+  it('skips an event whose start is no date', () => {
+    expect(parseIcs(ics('SUMMARY:Broken\nDTSTART:tomorrow')).events).toEqual([])
+  })
+})
+

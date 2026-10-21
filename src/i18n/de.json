@@ -384,6 +384,8 @@
     "calendarHint": "Importiere einen .ics-Export aus Outlook (Datei → Kalender speichern). Jeder Import ersetzt die zuvor importierten Termine; deine Zuordnungen von Art und Projekt bleiben erhalten. Termine mit Status „Frei“ (Erinnerungen, Urlaube anderer) blockieren keine Zeit. Serientermine werden in diesem Prototyp nur als Einzeltermin übernommen; eine spätere Version verbindet sich direkt mit Microsoft 365.",
     "importIcs": ".ics-Datei importieren",
     "imported": "{{total}} Termine importiert, vorheriger Import ersetzt ({{kept}} bereits bekannt, {{removed}} entfernt). {{skipped}} Serientermine nur als Einzeltermin übernommen.",
+    "icsEmpty": "Keine Termine in dieser Datei gefunden – nichts geändert.",
+    "icsFailed": "Die Datei konnte nicht gelesen werden: {{error}}",
     "ai": "KI-Assistent",
     "aiHint": "Der Schlüssel wird nur in diesem Browser auf diesem Rechner gespeichert und direkt an den Anbieter gesendet. Er landet nie im Repository und nicht im Export.",
     "provider": "Anbieter",

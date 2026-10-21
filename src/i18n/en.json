@@ -384,6 +384,8 @@
     "calendarHint": "Import an .ics export from Outlook (File → Save calendar). Each import replaces the previously imported events; your kind and project assignments are kept. Events shown as free (reminders, other people’s holidays) do not block time. Recurring series are imported as a single occurrence in this prototype; a later version connects to Microsoft 365 directly.",
     "importIcs": "Import .ics file",
     "imported": "{{total}} events imported, previous import replaced ({{kept}} already known, {{removed}} removed). {{skipped}} recurring series imported as a single occurrence.",
+    "icsEmpty": "No events found in this file – nothing was changed.",
+    "icsFailed": "The file could not be read: {{error}}",
     "ai": "AI assistant",
     "aiHint": "The key is stored only in this browser on this machine and sent directly to the provider. It is never written to the repository or included in exports.",
     "provider": "Provider",
