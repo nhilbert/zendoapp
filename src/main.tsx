@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 import { useStore } from './store/useStore'
-import { detectLocale, setupI18n } from './i18n'
+import { changeLocale, detectLocale, setupI18n } from './i18n'
 import { startSync } from './sync/server'
 
 // First run: seed fictional sample data so the prototype can be explored.
@@ -17,6 +17,10 @@ if (!initial.seeded) {
   }
 }
 setupI18n(useStore.getState().settings.locale)
+// The language can also arrive with the server's settings (first sync, another device).
+useStore.subscribe((s, prev) => {
+  if (s.settings.locale !== prev.settings.locale) changeLocale(s.settings.locale)
+})
 startSync()
 
 createRoot(document.getElementById('root')!).render(

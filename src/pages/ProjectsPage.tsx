@@ -14,7 +14,8 @@ import { ProjectDot, useLocale, useRelDay } from '@/components/TaskBits'
 export default function ProjectsPage() {
   const { t } = useTranslation()
   const projects = useVisibleProjects({ includeArchived: true })
-  const tasks = useVisibleTasks()
+  // someday and archived projects are listed too, with their own open tasks
+  const tasks = useVisibleTasks({ includeInactive: true })
   // masked private meetings show no project (CAL-7)
   const events = useVisibleEvents().filter((e) => !e.masked)
   const addProject = useStore((s) => s.addProject)

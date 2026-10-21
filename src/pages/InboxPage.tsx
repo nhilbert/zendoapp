@@ -64,7 +64,9 @@ export default function InboxPage() {
                     defaultValue={item.text}
                     rows={Math.min(6, item.text.split('\n').length + 1)}
                     onBlur={(e) => {
-                      updateInboxItem(item.id, e.target.value)
+                      // a cleared text keeps the item as it was (deleting has its own button)
+                      const text = e.target.value.trim()
+                      if (text && text !== item.text) updateInboxItem(item.id, text)
                       setEditing(null)
                     }}
                     onKeyDown={(e) => {

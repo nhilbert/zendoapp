@@ -165,7 +165,20 @@ export default function SettingsPage() {
               <Input type="time" step={900} value={settings.workdayEnd} onChange={timeChange('workdayEnd')} />
             </Field>
             <Field label={t('settings.capacity')}>
-              <Input type="number" min={1} max={16} step={0.5} value={settings.dayCapacityHours} onChange={(e) => updateSettings({ dayCapacityHours: Number(e.target.value) || 8 })} />
+              {/* taken when leaving the field: typing "6" after clearing must not become 86, and only 1–16 h count */}
+              <Input
+                key={settings.dayCapacityHours}
+                type="number"
+                min={1}
+                max={16}
+                step={0.5}
+                defaultValue={settings.dayCapacityHours}
+                onBlur={(e) => {
+                  const v = Number(e.target.value)
+                  if (v >= 1 && v <= 16) updateSettings({ dayCapacityHours: Math.round(v * 2) / 2 })
+                  else e.target.value = String(settings.dayCapacityHours)
+                }}
+              />
             </Field>
           </div>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">

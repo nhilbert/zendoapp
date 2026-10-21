@@ -157,7 +157,15 @@ export function Empty({ title, body, children }: { title: ReactNode; body?: Reac
 
 export function Field({ label, hint, children, className }: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <label className={cx('block', className)}>
+    <label
+      className={cx('block', className)}
+      onClick={(e) => {
+        // A click on the caption or beside the controls activates the label's first control: fine for a
+        // field (it gets the focus), wrong for a row of buttons (it would pick the first estimate or priority).
+        if ((e.target as HTMLElement).closest('button,input,select,textarea,a')) return
+        if (e.currentTarget.querySelector('button,input,select,textarea')?.tagName === 'BUTTON') e.preventDefault()
+      }}
+    >
       <span className="mb-1 block text-[12px] font-medium text-ink-2">
         {label}
         {hint && <span className="ml-1.5 font-normal text-ink-3">{hint}</span>}

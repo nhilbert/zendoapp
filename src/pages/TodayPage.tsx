@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from 
 import { ChevronLeft, ChevronRight, Lock, MapPin, Plus, Target, Video, X } from 'lucide-react'
 import { BLOCK_SIZE_LABEL, type ISODate, type PlanBlock, type Task } from '@/domain/types'
 import type { VisibleEvent } from '@/store/visible'
-import { addDaysISO, addMinutes, compareISO, durationMinutes, fmtDate, fmtHours, fmtTime, hhmmToMinutes, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
+import { addDaysISO, addMinutes, compareISO, durationMinutes, fmtDate, fmtHours, fmtTime, hhmmToMinutes, isISODate, minutesToHHMM, nowHHMM, todayISO } from '@/domain/dates'
 import { type DayCapacity, blocksOn, candidatesForDay, dayCapacity, eventsOn, isBlocking, isOpen, leftoverTasks, projectsWithoutNextAction, safeTimes, sortByTime, sortTasks, tasksPlannedOn } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
@@ -26,7 +26,9 @@ export default function TodayPage() {
   const locale = useLocale()
   const [params, setParams] = useSearchParams()
   const today = todayISO()
-  const date = params.get('date') ?? today
+  // a mangled ?date= falls back to today instead of breaking the page
+  const asked = params.get('date')
+  const date = asked && isISODate(asked) ? asked : today
   const setDate = (d: ISODate) => setParams(d === today ? {} : { date: d })
 
   const tasks = useVisibleTasks()

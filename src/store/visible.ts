@@ -28,19 +28,23 @@ export function useVisibleProjects(opts: { includeArchived?: boolean } = {}): Pr
   )
 }
 
-/** Workable tasks: chores plus tasks of active/planned projects; private ones removed while hiding. */
-export function useVisibleTasks(): Task[] {
+/**
+ * Workable tasks: chores plus tasks of active/planned projects (includeInactive: of every project);
+ * private ones removed while hiding.
+ */
+export function useVisibleTasks(opts: { includeInactive?: boolean } = {}): Task[] {
   const tasks = useStore((s) => s.tasks)
   const projects = useStore((s) => s.projects)
   const hide = useHidePrivate()
+  const includeInactive = !!opts.includeInactive
   return useMemo(() => {
     const map = new Map(projects.map((p) => [p.id, p]))
     return tasks.filter((t) => {
       const project = t.projectId ? map.get(t.projectId) : undefined
-      if (t.projectId && (!project || !isWorkable(project))) return false
+      if (t.projectId && (!project || (!includeInactive && !isWorkable(project)))) return false
       return !hide || !isPrivateTask(t, map)
     })
-  }, [tasks, projects, hide])
+  }, [tasks, projects, hide, includeInactive])
 }
 
 export function useVisibleBlocks(): PlanBlock[] {
