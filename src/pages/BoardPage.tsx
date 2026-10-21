@@ -156,6 +156,8 @@ export default function BoardPage() {
                 ref={pickerButton}
                 type="button"
                 onClick={() => setPicking((v) => !v)}
+                // while the list is open, a click here only toggles it; focus stays in the list
+                onMouseDown={(e) => picking && e.preventDefault()}
                 aria-haspopup="listbox"
                 aria-expanded={picking}
                 aria-controls={picking ? pickerId : undefined}
@@ -280,9 +282,7 @@ function ScopeMenu({
   const ref = useRef<HTMLUListElement>(null)
   // The highlight follows an id, not a row number, so it survives the list changing underneath.
   const [activeId, setActiveId] = useState(value)
-  useEffect(() => setActiveId(value), [value])
-  const found = items.findIndex((i) => i.id === activeId)
-  const active = found >= 0 ? found : Math.max(0, items.findIndex((i) => i.id === value))
+  const active = Math.max(0, items.findIndex((i) => i.id === activeId))
   const move = (i: number) => setActiveId(items[Math.max(0, Math.min(items.length - 1, i))].id)
   const closeRef = useRef(onClose)
   closeRef.current = onClose
@@ -292,6 +292,8 @@ function ScopeMenu({
     if (refocus) anchor.current?.focus()
   }
   const typed = useRef({ text: '', at: 0 })
+  // Space picks on release, so the release does not land on the name button and open the list again.
+  const spaceDown = useRef(false)
   const [left, setLeft] = useState(0)
 
   useEffect(() => ref.current?.focus(), [])
@@ -313,7 +315,7 @@ function ScopeMenu({
       const box = list?.parentElement?.getBoundingClientRect()
       if (!list || !box) return
       const gutter = 16
-      const x = Math.max(gutter, Math.min(box.left, window.innerWidth - list.offsetWidth - gutter))
+      const x = Math.max(gutter, Math.min(box.left, document.documentElement.clientWidth - list.offsetWidth - gutter))
       setLeft(x - box.left)
     }
     place()
@@ -343,8 +345,8 @@ function ScopeMenu({
       aria-activedescendant={`${id}-${active}`}
       tabIndex={-1}
       onBlur={(e) => {
-        // a click elsewhere is the pointerdown listener's; here only focus moving on (Tab)
-        if (e.relatedTarget && !e.currentTarget.parentElement?.contains(e.relatedTarget)) close(false)
+        // a click elsewhere is the pointerdown listener's; here only focus moving on (Tab, Shift+Tab)
+        if (e.relatedTarget) close(false)
       }}
       onKeyDown={(e) => {
         if (e.key === 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return
@@ -352,13 +354,21 @@ function ScopeMenu({
         else if (e.key === 'ArrowUp') move(active - 1)
         else if (e.key === 'Home' || e.key === 'PageUp') move(0)
         else if (e.key === 'End' || e.key === 'PageDown') move(items.length - 1)
-        else if (e.key === 'Enter' || (e.key === ' ' && !typing())) {
+        else if (e.key === 'Enter') {
           onPick(items[active].id)
           close(true)
-        } else if (e.key === 'Escape') close(true)
+        } else if (e.key === ' ' && !typing()) spaceDown.current = true
+        else if (e.key === 'Escape') close(true)
         else if (e.key.length === 1) typeAhead(e.key)
+        else return
         e.preventDefault()
         e.stopPropagation()
+      }}
+      onKeyUp={(e) => {
+        if (e.key !== ' ' || !spaceDown.current) return
+        spaceDown.current = false
+        onPick(items[active].id)
+        close(true)
       }}
       style={{ left }}
       className="card fade-in absolute top-full z-30 mt-1 max-h-[60vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto p-1 shadow-[var(--shadow)] outline-none md:w-96"
