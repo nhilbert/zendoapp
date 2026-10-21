@@ -59,9 +59,9 @@ export default function SettingsPage() {
     }
   }
   const [ai, setAi] = useState<AiSettings>(() => loadAiSettings())
-  const [aiServer, setAiServer] = useState<{ configured: boolean; provider: string | null; model: string | null } | null>(null)
+  const [aiServer, setAiServer] = useState<{ configured: boolean; provider: string | null; model: string | null; clarifyModel: string | null } | null>(null)
   useEffect(() => {
-    api<{ configured: boolean; provider: string | null; model: string | null }>('/api/ai/status')
+    api<{ configured: boolean; provider: string | null; model: string | null; clarifyModel: string | null }>('/api/ai/status')
       .then(setAiServer)
       .catch(() => setAiServer(null))
   }, [])
@@ -247,7 +247,7 @@ export default function SettingsPage() {
           <SectionLabel>{t('settings.ai')}</SectionLabel>
           {aiServer?.configured ? (
             <p className="mb-3 text-[13px] text-ink">
-              {t('settings.aiServer', { provider: aiServer.provider === 'openai' ? 'ChatGPT (OpenAI)' : 'Claude (Anthropic)', model: aiServer.model ?? '' })}
+              {t('settings.aiServer', { provider: aiServer.provider === 'openai' ? 'ChatGPT (OpenAI)' : 'Claude (Anthropic)', model: aiServer.model ?? '', clarifyModel: aiServer.clarifyModel ?? aiServer.model ?? '' })}
             </p>
           ) : (
             <p className="mb-3 text-[13px] text-ink-2">{t('settings.aiServerMissing')}</p>

@@ -8,10 +8,11 @@ import { todayISO } from '@/domain/dates'
 import { isValidEventTimes } from '@/components/EventDialog'
 import { nextActionOf } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
-import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
+import { useHidePrivate, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { Button, Checkbox, Empty, Field, Input, Segmented, Select, Textarea, cx } from '@/components/ui'
 import { fmtEstimate } from '@/components/TaskBits'
 import { aiErrorText } from '@/ai/errors'
+import { NoAiKey, suggestClarification, type ClarifySuggestion } from '@/ai'
 
 /**
  * Clarify – two steps, one item at a time.
@@ -30,6 +31,7 @@ export default function ClarifyPage() {
   const inbox = useStore((s) => s.inbox)
   const projects = useVisibleProjects()
   const tasks = useVisibleTasks()
+  const hidePrivate = useHidePrivate()
   const store = useStore()
 
   const requested = params.get('id')
@@ -59,6 +61,10 @@ export default function ClarifyPage() {
   const [evLocation, setEvLocation] = useState('')
   const [ai, setAi] = useState<{ status: 'idle' | 'loading' | 'done' | 'error'; message?: string }>({ status: 'idle' })
   const [formError, setFormError] = useState<string | null>(null)
+  // An existing task the AI linked the note to; preset on, so saving accepts the whole suggestion in one click.
+  const [related, setRelated] = useState<ClarifySuggestion['related']>(null)
+  const [relatedOn, setRelatedOn] = useState(true)
+  const asNote = related?.relation === 'duplicate' && relatedOn
 
   // Fresh form for every item.
   useEffect(() => {
@@ -86,6 +92,8 @@ export default function ClarifyPage() {
     setEvLocation('')
     setAi({ status: 'idle' })
     setFormError(null)
+    setRelated(null)
+    setRelatedOn(true)
   }, [item?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Make next action" defaults to on when the project has none yet.
@@ -111,6 +119,7 @@ export default function ClarifyPage() {
       return
     }
     setKind(k)
+    setRelated(null)
     setStep('form')
   }
 
@@ -123,9 +132,8 @@ export default function ClarifyPage() {
   const runAuto = async () => {
     if (!item) return
     setAi({ status: 'loading' })
-    const { suggestClarification, NoAiKey } = await import('@/ai')
     try {
-      const s = await suggestClarification({ text: item.text, projects: activeProjects.map((p) => p.name), today: todayISO(), locale: i18n.language.startsWith('de') ? 'de' : 'en' })
+      const s = await suggestClarification({ text: item.text, today: todayISO(), locale: i18n.language.startsWith('de') ? 'de' : 'en', includePrivate: !hidePrivate })
       const map: Record<string, Kind> = { task: 'task', project: 'project', meeting: 'meeting', someday: 'someday', trash: 'trash' }
       const k = map[s.kind] ?? 'task'
       setKind(k)
@@ -134,7 +142,7 @@ export default function ClarifyPage() {
         setNewProjectName(s.newProjectName || s.title)
         setGoal(s.goal ?? '')
       } else {
-        const match = s.projectName ? activeProjects.find((p) => p.name.toLowerCase() === s.projectName!.toLowerCase()) : undefined
+        const match = s.projectId ? activeProjects.find((p) => p.id === s.projectId) : undefined
         setProjectId(match?.id ?? '')
       }
       if (s.estimateMinutes) setEstimate(s.estimateMinutes)
@@ -143,6 +151,8 @@ export default function ClarifyPage() {
       if (s.plannedDate) setPlanned(s.plannedDate)
       if (s.note) setNote(s.note)
       setMore(!!(s.dueDate || s.plannedDate || s.note))
+      setRelated(s.related ?? null)
+      setRelatedOn(true)
       setAi({ status: 'done', message: s.reasoning ?? undefined })
       setStep('form')
     } catch (err) {
@@ -185,6 +195,12 @@ export default function ClarifyPage() {
   }
 
   const save = () => {
+    if (!item) return
+    if (asNote) {
+      store.addTaskNote(related.taskId, item.text)
+      finish()
+      return
+    }
     const firstGoal = goal.trim() ? [{ id: crypto.randomUUID(), text: goal.trim() }] : undefined
     // Resolved only after the form has been validated, so a rejected save never leaves an empty project behind.
     const resolveProject = () =>
@@ -236,6 +252,7 @@ export default function ClarifyPage() {
       case 'trash':
         break
     }
+    if (related?.relation === 'completes' && relatedOn) store.completeTask(related.taskId, true)
     finish()
   }
 
@@ -359,6 +376,11 @@ export default function ClarifyPage() {
             {ai.status === 'done' && ai.message && <span className="truncate text-[12px] text-ink-3">— {ai.message}</span>}
           </div>
           <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{item.text}</p>
+          {related && (
+            <label className="fade-in mt-4 flex items-center gap-2 text-[13px] text-ink">
+              <Checkbox checked={relatedOn} onChange={setRelatedOn} /> {t(`clarify.related.${related.relation}`, { title: related.title })}
+            </label>
+          )}
 
           <form
             onSubmit={(e) => {
@@ -367,127 +389,131 @@ export default function ClarifyPage() {
             }}
             className="mt-6 flex flex-col gap-4"
           >
-            {kind === 'task' && (
+            {!asNote && (
               <>
-                <Field label={t('clarify.form.title')} hint={t('clarify.form.titleHint')}>
-                  <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
-                </Field>
-                {projectSelect}
-                {projectId === NEW && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {kind === 'task' && (
+                  <>
+                    <Field label={t('clarify.form.title')} hint={t('clarify.form.titleHint')}>
+                      <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </Field>
+                    {projectSelect}
+                    {projectId === NEW && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Field label={t('clarify.form.projectName')}>
+                          <Input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} />
+                        </Field>
+                        <Field label={t('clarify.form.goal')} hint={t('common.optional')}>
+                          <Input value={goal} onChange={(e) => setGoal(e.target.value)} />
+                        </Field>
+                      </div>
+                    )}
+                    {estimateRow}
+                    {projectId && projectId !== NEW && (
+                      <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                        <Checkbox checked={makeNext} onChange={setMakeNext} /> {t('clarify.form.makeNext')}
+                      </label>
+                    )}
+                    {!projectId && privateToggle}
+                    {moreToggle}
+                    {more && (
+                      <div className="fade-in flex flex-col gap-4">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <Field label={t('clarify.form.due')} hint={t('clarify.form.dueHint')}>
+                            <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+                          </Field>
+                          <Field label={t('clarify.form.planned')} hint={t('clarify.form.plannedHint')}>
+                            <Input type="date" value={planned} onChange={(e) => setPlanned(e.target.value)} />
+                          </Field>
+                        </div>
+                        <Field label={t('clarify.form.recurrence')} className="w-64">
+                          <Select value={recurrence} onChange={(e) => setRecurrence(e.target.value as Recurrence | '')}>
+                            <option value="">{t('recurrence.none')}</option>
+                            {RECURRENCES.map((r) => (
+                              <option key={r} value={r}>
+                                {t(`recurrence.${r}`)}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label={t('clarify.form.note')} hint={t('common.optional')}>
+                          <Textarea value={note} onChange={(e) => setNote(e.target.value)} className="min-h-[60px]" />
+                        </Field>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {kind === 'project' && (
+                  <>
                     <Field label={t('clarify.form.projectName')}>
-                      <Input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} />
+                      <Input autoFocus value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder={item.text.split('\n')[0]} />
                     </Field>
                     <Field label={t('clarify.form.goal')} hint={t('common.optional')}>
-                      <Input value={goal} onChange={(e) => setGoal(e.target.value)} />
+                      <Input value={goal} onChange={(e) => setGoal(e.target.value)} placeholder={t('clarify.form.goalPlaceholder')} />
                     </Field>
-                  </div>
+                    <Field label={t('clarify.form.firstAction')} hint={t('clarify.form.titleHint')}>
+                      <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </Field>
+                    {privateToggle}
+                    {moreToggle}
+                    {more && (
+                      <div className="fade-in flex flex-col gap-4">
+                        {estimateRow}
+                        <Field label={t('clarify.form.due')} hint={t('clarify.form.dueHint')} className="w-48">
+                          <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+                        </Field>
+                      </div>
+                    )}
+                  </>
                 )}
-                {estimateRow}
-                {projectId && projectId !== NEW && (
-                  <label className="flex items-center gap-2 text-[13px] text-ink-2">
-                    <Checkbox checked={makeNext} onChange={setMakeNext} /> {t('clarify.form.makeNext')}
-                  </label>
-                )}
-                {!projectId && privateToggle}
-                {moreToggle}
-                {more && (
-                  <div className="fade-in flex flex-col gap-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field label={t('clarify.form.due')} hint={t('clarify.form.dueHint')}>
-                        <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+
+                {kind === 'meeting' && (
+                  <>
+                    <Field label={t('event.title')}>
+                      <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </Field>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <Field label={t('event.date')}>
+                        <Input type="date" value={evDate} onChange={(e) => setEvDate(e.target.value)} />
                       </Field>
-                      <Field label={t('clarify.form.planned')} hint={t('clarify.form.plannedHint')}>
-                        <Input type="date" value={planned} onChange={(e) => setPlanned(e.target.value)} />
+                      <Field label={t('event.start')}>
+                        <Input type="time" step={900} value={evStart} onChange={(e) => setEvStart(e.target.value)} />
+                      </Field>
+                      <Field label={t('event.end')}>
+                        <Input type="time" step={900} value={evEnd} onChange={(e) => setEvEnd(e.target.value)} />
                       </Field>
                     </div>
-                    <Field label={t('clarify.form.recurrence')} className="w-64">
-                      <Select value={recurrence} onChange={(e) => setRecurrence(e.target.value as Recurrence | '')}>
-                        <option value="">{t('recurrence.none')}</option>
-                        {RECURRENCES.map((r) => (
-                          <option key={r} value={r}>
-                            {t(`recurrence.${r}`)}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field label={t('clarify.form.note')} hint={t('common.optional')}>
-                      <Textarea value={note} onChange={(e) => setNote(e.target.value)} className="min-h-[60px]" />
-                    </Field>
-                  </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label={t('event.kind')}>
+                        <Select value={evKind} onChange={(e) => setEvKind(e.target.value as EventKind)}>
+                          {EVENT_KINDS.map((k) => (
+                            <option key={k} value={k}>
+                              {t(`event.kinds.${k}`)}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label={t('event.location')} hint={t('common.optional')}>
+                        <Input value={evLocation} onChange={(e) => setEvLocation(e.target.value)} />
+                      </Field>
+                    </div>
+                    {projectSelect}
+                  </>
                 )}
-              </>
-            )}
 
-            {kind === 'project' && (
-              <>
-                <Field label={t('clarify.form.projectName')}>
-                  <Input autoFocus value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder={item.text.split('\n')[0]} />
-                </Field>
-                <Field label={t('clarify.form.goal')} hint={t('common.optional')}>
-                  <Input value={goal} onChange={(e) => setGoal(e.target.value)} placeholder={t('clarify.form.goalPlaceholder')} />
-                </Field>
-                <Field label={t('clarify.form.firstAction')} hint={t('clarify.form.titleHint')}>
-                  <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-                </Field>
-                {privateToggle}
-                {moreToggle}
-                {more && (
-                  <div className="fade-in flex flex-col gap-4">
-                    {estimateRow}
-                    <Field label={t('clarify.form.due')} hint={t('clarify.form.dueHint')} className="w-48">
-                      <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+                {kind === 'someday' && (
+                  <>
+                    <Field label={t('clarify.form.title')}>
+                      <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
                     </Field>
-                  </div>
+                    {projectSelect}
+                    {!projectId && privateToggle}
+                  </>
                 )}
+
+                {kind === 'trash' && <p className="text-[13px] text-ink-2">{t('clarify.kinds.trashHint')}.</p>}
               </>
             )}
-
-            {kind === 'meeting' && (
-              <>
-                <Field label={t('event.title')}>
-                  <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
-                </Field>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <Field label={t('event.date')}>
-                    <Input type="date" value={evDate} onChange={(e) => setEvDate(e.target.value)} />
-                  </Field>
-                  <Field label={t('event.start')}>
-                    <Input type="time" step={900} value={evStart} onChange={(e) => setEvStart(e.target.value)} />
-                  </Field>
-                  <Field label={t('event.end')}>
-                    <Input type="time" step={900} value={evEnd} onChange={(e) => setEvEnd(e.target.value)} />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label={t('event.kind')}>
-                    <Select value={evKind} onChange={(e) => setEvKind(e.target.value as EventKind)}>
-                      {EVENT_KINDS.map((k) => (
-                        <option key={k} value={k}>
-                          {t(`event.kinds.${k}`)}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label={t('event.location')} hint={t('common.optional')}>
-                    <Input value={evLocation} onChange={(e) => setEvLocation(e.target.value)} />
-                  </Field>
-                </div>
-                {projectSelect}
-              </>
-            )}
-
-            {kind === 'someday' && (
-              <>
-                <Field label={t('clarify.form.title')}>
-                  <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
-                </Field>
-                {projectSelect}
-                {!projectId && privateToggle}
-              </>
-            )}
-
-            {kind === 'trash' && <p className="text-[13px] text-ink-2">{t('clarify.kinds.trashHint')}.</p>}
             {formError && <p className="text-[12px] text-rose">{formError}</p>}
 
             <div className="mt-2 flex items-center justify-between border-t border-line pt-4">

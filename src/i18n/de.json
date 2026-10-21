@@ -122,7 +122,11 @@
     "less": "Weniger Optionen",
     "keys": "1–5 wählen · 6 Papierkorb · a Auto",
     "aiSuggests": "KI schlägt vor: {{kind}}",
-    "confirmTrash": "Löschen und weiter"
+    "confirmTrash": "Löschen und weiter",
+    "related": {
+      "completes": "„{{title}}“ abhaken",
+      "duplicate": "Nur als Notiz zu „{{title}}“"
+    }
   },
   "priority": {
     "high": "Hoch",
@@ -403,7 +407,7 @@
     "importDone": "Daten importiert.",
     "importInvalid": "Diese Datei ist kein Zendo-Export. Es wurde nichts geändert.",
     "m365NotConfigured": "Microsoft 365 ist nicht konfiguriert: MS_CLIENT_ID und MS_TENANT_ID in .env eintragen (siehe docs/outlook-setup.md) und neu starten.",
-    "aiServer": "Der Zendo-Server nutzt {{provider}} · {{model}} mit dem dort hinterlegten Schlüssel. „Auto“ beim Klären sendet den Eingangstext und die Projektnamen; „Vorschlagen“ in der Woche sendet Projektnamen, Hauptziele, Fälligkeiten, Zahlen zur offenen Arbeit und freie Stunden pro Tag – keine Aufgaben- oder Termintitel.",
+    "aiServer": "Der Zendo-Server nutzt {{provider}} mit dem dort hinterlegten Schlüssel: {{clarifyModel}} für „Auto“ beim Klären, {{model}} für „Vorschlagen“ in der Woche. „Auto“ sendet den Eingangstext und einen Überblick über deine aktiven und geplanten Projekte (Namen, Ziele, Notizen, nächster Schritt) sowie deine offenen und kürzlich erledigten Aufgaben (Titel, Status, Daten) – keine Aufgabennotizen, keine Termine. „Vorschlagen“ sendet Projektnamen, Hauptziele, Fälligkeiten, Zahlen zur offenen Arbeit und freie Stunden pro Tag – keine Aufgaben- oder Termintitel. Privates nur, solange es angezeigt wird.",
     "aiServerMissing": "Kein KI-Schlüssel auf dem Zendo-Server. ANTHROPIC_API_KEY (oder OPENAI_API_KEY) in seinen Einstellungen eintragen und Zendo neu starten; der Schlüssel bleibt auf dem Server und erreicht nie den Browser.",
     "aiBrowserFallback": "Fallback: Schlüssel in diesem Browser",
     "aiRemoveBrowserKey": "Im Browser gespeicherten Schlüssel entfernen (nicht mehr nötig)",

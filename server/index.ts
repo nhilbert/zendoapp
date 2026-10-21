@@ -51,6 +51,7 @@ const aiProvider = process.env.ZENDO_AI_PROVIDER?.trim()
 const ai = resolveAi({
   provider: aiProvider === 'anthropic' || aiProvider === 'openai' ? (aiProvider as AiProviderName) : undefined,
   model: process.env.ZENDO_AI_MODEL,
+  clarifyModel: process.env.ZENDO_AI_CLARIFY_MODEL,
   anthropicKey: process.env.ANTHROPIC_API_KEY?.trim() || undefined,
   openaiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
 })
@@ -79,7 +80,7 @@ const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, () => {
   if (!hasUi) console.log('No dist/ build found: serving the API only (fine with npm run dev; run npm run build for npm start).')
   if (!process.env.MS_CLIENT_ID) console.log('Microsoft 365 not configured (no .env) – calendar routes answer 503, everything else works.')
   console.log(mcp ? `MCP: ${oauth ? oauth.resource : `http://${HOST}:${PORT}/mcp`} (${[MCP_TOKEN && 'token', oauth && 'OAuth'].filter(Boolean).join(' + ')})` : 'MCP: off over HTTP (set ZENDO_MCP_OAUTH=1 or ZENDO_MCP_TOKEN); stdio via npm run mcp')
-  console.log(ai ? `AI: ${ai.provider} · ${ai.model}` : 'AI: not configured (add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env)')
+  console.log(ai ? `AI: ${ai.provider} · ${ai.model} (Clarify: ${ai.clarifyModel})` : 'AI: not configured (add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env)')
 })
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {

@@ -142,11 +142,11 @@ Priority: **M** must, **S** should, **C** could.
 
 ### 5.13 AI assistance (optional, bring your own key)
 - **AI-1 (M) [P]** Settings: choose provider (Claude/Anthropic or ChatGPT/OpenAI), paste API key, optional model override. Key is stored only locally and excluded from exports.
-- **AI-2 (M) [P]** Clarify: suggest kind, a verb-first next action, project match, estimate, priority, due/planned dates for the current inbox item. The user always confirms.
+- **AI-2 (M) [P]** Clarify: suggest kind, a verb-first next action, project match, estimate, priority, due/planned dates for the current inbox item. The suggestion knows the active and planned projects (goals, notes, next action) and the open and recently done tasks, so it matches projects by content and points out duplicates, answered waiting-for items and work already done. When the note concerns one open task, a single preset checkbox under the note offers "Tick off „…“" (the note reports it done or answers a waiting-for) or "Only add as a note to „…“" (the note asks for it again; the form fields hide); Save accepts the whole suggestion in one click, unticking declines it. No further controls. The user always confirms.
 - **AI-3 (S) [ ]** Project page: break a project outcome into candidate actions; propose the next action.
 - **AI-4 (S) [P]** Week: propose additional blocks for the visible two weeks from deadlines, open work and free capacity, with a summary and a reason per block. Suggestions appear dashed; the user removes single ones and applies the rest (notes carried over). The server drops suggestions that would overfill a day (as Week shows it; today only its remaining hours), land on off or fully booked days, or name unknown or hidden projects; the browser checks them again against the current plan before showing and applying them. A proposal is discarded when private items are hidden.
 - **AI-5 (S) [ ]** Reviews: draft the daily/weekly journal from completed items and notes.
-- **AI-6 (M) [P]** Calls go through the local server with the key from `.env` (key never in the browser); Settings states the provider, model and what is sent (Clarify: inbox text and project names; week proposal: project names, headline goals, due dates, open-work figures and free hours, no task or meeting titles). A key stored in the browser remains only as a fallback when the server has none. A managed secret store is deferred (owner's decision, 2026-10-20).
+- **AI-6 (M) [P]** Calls go through the local server with the key from `.env` (key never in the browser); Settings states the provider, the model per job and what is sent (Clarify: inbox text plus projects with goals, notes and next action, and task titles with status and dates, no task notes or meetings; week proposal: project names, headline goals, due dates, open-work figures and free hours, no task or meeting titles). A key stored in the browser remains only as a fallback when the server has none. A managed secret store is deferred (owner's decision, 2026-10-20).
 
 ### 5.14 Settings and data
 - **SET-1 (M) [P]** Language (de/en), working hours, focus hours per full day, work days.
@@ -183,7 +183,7 @@ Answered items are struck through; see section 9 for the decisions.
 7. **Areas.** Do you want a level above projects (client / own business / personal)?
 8. ~~**Actual time.**~~ Toggl integration is a later add-on.
 9. **Calendar.** App registration is possible (see `outlook-setup.md` for how simple it is). Still open: write blocks back to Outlook as busy time? Only the primary calendar?
-10. ~~**AI.**~~ Sending inbox text and project names is acceptable; "Auto" on demand per item.
+10. ~~**AI.**~~ Sending inbox text and project names is acceptable; "Auto" on demand per item. Extended 2026-10-21: project notes, goals and task titles may go to the AI as context for Clarify; Clarify runs on Sonnet.
 11. **Reference material.** Do notes/reference live in Zendo or elsewhere (OneNote, Obsidian)? Only links?
 12. ~~**Devices.**~~ Answered by hosting: one server, any device (laptop, phone).
 13. **Review timing.** Weekly review on Friday afternoon or Monday morning? Should the app nudge you?

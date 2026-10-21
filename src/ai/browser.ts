@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
-import { CLARIFY_SYSTEM_PROMPT, buildClarifyPrompt, parseClarifySuggestion, type ClarifyInput, type ClarifySuggestion } from './clarify'
+import { CLARIFY_SYSTEM_PROMPT, buildClarifyPrompt, parseClarifySuggestion, type ClarifyContext, type ClarifySuggestion } from './clarify'
 import { DEFAULT_MODELS, type AiSettings } from './settings'
 
 /**
@@ -8,8 +8,8 @@ import { DEFAULT_MODELS, type AiSettings } from './settings'
  * Used when the local server has no AI key configured. Prefer ANTHROPIC_API_KEY / OPENAI_API_KEY in .env.
  * Loaded lazily so the SDKs never weigh on the initial bundle.
  */
-export async function suggestFromBrowser(input: ClarifyInput, settings: AiSettings): Promise<ClarifySuggestion> {
-  const user = buildClarifyPrompt(input)
+export async function suggestFromBrowser(text: string, ctx: ClarifyContext, settings: AiSettings): Promise<ClarifySuggestion> {
+  const user = buildClarifyPrompt(text, ctx)
   const model = settings.model.trim() || (settings.provider === 'none' ? '' : DEFAULT_MODELS[settings.provider])
   if (settings.provider === 'anthropic') {
     const client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true })
@@ -26,6 +26,7 @@ export async function suggestFromBrowser(input: ClarifyInput, settings: AiSettin
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)
         .join(''),
+      ctx,
     )
   }
   if (settings.provider === 'openai') {
@@ -38,7 +39,7 @@ export async function suggestFromBrowser(input: ClarifyInput, settings: AiSettin
       ],
       response_format: { type: 'json_object' },
     })
-    return parseClarifySuggestion(response.choices[0]?.message?.content ?? '')
+    return parseClarifySuggestion(response.choices[0]?.message?.content ?? '', ctx)
   }
   throw new Error('not_configured')
 }

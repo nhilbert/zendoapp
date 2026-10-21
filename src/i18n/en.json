@@ -122,7 +122,11 @@
     "less": "Fewer options",
     "keys": "1–5 choose · 6 trash · a auto",
     "aiSuggests": "AI suggests: {{kind}}",
-    "confirmTrash": "Delete and move on"
+    "confirmTrash": "Delete and move on",
+    "related": {
+      "completes": "Tick off “{{title}}”",
+      "duplicate": "Only add as a note to “{{title}}”"
+    }
   },
   "priority": {
     "high": "High",
@@ -403,7 +407,7 @@
     "importDone": "Data imported.",
     "importInvalid": "This file is not a Zendo export. Nothing was changed.",
     "m365NotConfigured": "Microsoft 365 is not configured: add MS_CLIENT_ID and MS_TENANT_ID to .env (see docs/outlook-setup.md) and restart.",
-    "aiServer": "The Zendo server uses {{provider}} · {{model}} with the key stored there. Auto in Clarify sends the inbox text and project names; Propose in Week sends project names, headline goals, due dates, open-work figures and free hours per day – no task or meeting titles.",
+    "aiServer": "The Zendo server uses {{provider}} with the key stored there: {{clarifyModel}} for Auto in Clarify, {{model}} for Propose in Week. Auto sends the inbox text and an overview of your active and planned projects (names, goals, notes, next action) and of your open and recently done tasks (titles, status, dates) – no task notes, no meetings. Propose sends project names, headline goals, due dates, open-work figures and free hours per day – no task or meeting titles. Private items only while they are shown.",
     "aiServerMissing": "No AI key on the Zendo server. Add ANTHROPIC_API_KEY (or OPENAI_API_KEY) to its settings and restart Zendo; the key stays on the server and never reaches the browser.",
     "aiBrowserFallback": "Fallback: key stored in this browser",
     "aiRemoveBrowserKey": "Remove the key stored in this browser (no longer needed)",

@@ -55,6 +55,8 @@ export function createApp({ repo, calendar, ai, mcp, oauth, staticDir, publicUrl
 
   if (staticDir) {
     app.use('/*', serveStatic({ root: staticDir }))
+    // A file of an earlier build (an open tab after a deploy) must fail as such, not load the page as script.
+    app.get('/assets/*', (c) => c.text('not found', 404))
     const index = path.join(staticDir, 'index.html')
     app.get('*', async (c) => c.html(await readFile(index, 'utf8')))
   }

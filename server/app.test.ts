@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { openDb } from './db.ts'
 import { Repo } from './repo.ts'
 import { createApp } from './app.ts'
@@ -45,5 +48,24 @@ describe('API', () => {
     const res = await withCal.request('/api/calendar/status', { headers: H })
     expect(res.status).toBe(503)
     expect((await res.json()).error).toBe('not_configured')
+  })
+})
+
+describe('UI files', () => {
+  const dist = mkdtempSync(path.join(tmpdir(), 'zendo-dist-'))
+  mkdirSync(path.join(dist, 'assets'))
+  writeFileSync(path.join(dist, 'index.html'), '<!doctype html><title>Zendo</title>')
+  writeFileSync(path.join(dist, 'assets', 'ai-NEW.js'), 'export {}')
+  const app = createApp({ repo: new Repo(openDb(':memory:')), staticDir: dist })
+
+  it('serves the page for app routes and existing assets as they are', async () => {
+    expect(await (await app.request('/clarify')).text()).toContain('<title>Zendo')
+    expect((await app.request('/assets/ai-NEW.js')).status).toBe(200)
+  })
+
+  it('answers 404 for an asset of an earlier build instead of the page', async () => {
+    const res = await app.request('/assets/ai-OLD.js')
+    expect(res.status).toBe(404)
+    expect(res.headers.get('content-type')).not.toContain('text/html')
   })
 })

@@ -16,6 +16,7 @@ import { Button, IconButton, PageHeader, cx, useIsPhone } from '@/components/ui'
 import { ProjectDot, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 import { type ProposedBlock, fitProposal } from '@/ai/week'
 import { aiErrorText } from '@/ai/errors'
+import { proposeWeek } from '@/ai'
 import { NotConfigured } from '@/sync/api'
 
 const CHORES = 'chores'
@@ -62,7 +63,6 @@ export default function WeekPage() {
     const mine = ++request.current
     setProposal({ status: 'loading' })
     try {
-      const { proposeWeek } = await import('@/ai')
       const r = await proposeWeek({ start, days: 14, today, now: nowHHMM(), locale: appLocale, includePrivate: !hidePrivate })
       if (mine === request.current) setProposal({ status: 'ready', summary: r.summary, dropped: r.dropped, blocks: r.blocks.map((b, i) => ({ ...b, key: String(i) })) })
     } catch (err) {

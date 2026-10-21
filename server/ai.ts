@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import type { Repo } from './repo.ts'
 import { BadRequest } from './repo.ts'
-import { CLARIFY_SCHEMA, CLARIFY_SYSTEM_PROMPT, buildClarifyPrompt, parseClarifySuggestion } from '../src/ai/clarify.ts'
+import { CLARIFY_SYSTEM_PROMPT, buildClarifyContext, buildClarifyPrompt, clarifySchema, parseClarifySuggestion } from '../src/ai/clarify.ts'
 import { WEEK_SCHEMA, WEEK_SYSTEM_PROMPT, buildWeekPrompt, fitProposal, parseWeekProposal } from '../src/ai/week.ts'
 import type { CalendarEvent, Locale, PlanBlock, Project, Settings, Task } from '../src/domain/types.ts'
 import { DEFAULT_SETTINGS } from '../src/domain/types.ts'
@@ -15,34 +15,48 @@ export type AiProviderName = 'anthropic' | 'openai'
 export interface AiConfig {
   provider?: AiProviderName
   model?: string
+  /** Model for Clarify (ZENDO_AI_CLARIFY_MODEL); sorting one note needs less than planning a week. */
+  clarifyModel?: string
   anthropicKey?: string
   openaiKey?: string
 }
 
 export const DEFAULT_SERVER_MODELS: Record<AiProviderName, string> = { anthropic: 'claude-opus-5-5', openai: 'gpt-5' }
+/** Clarify without ZENDO_AI_CLARIFY_MODEL: Sonnet for Claude; for OpenAI the main model (set e.g. a mid-tier model by hand). */
+export const DEFAULT_CLARIFY_MODELS: Record<AiProviderName, string | null> = { anthropic: 'claude-sonnet-5-5', openai: null }
+
+export interface ResolvedAi {
+  provider: AiProviderName
+  model: string
+  clarifyModel: string
+  complete: Complete
+}
 
 /** Per call: the output schema, how hard the model thinks, and the output cap. */
 export interface CompleteOptions {
   schema: Record<string, unknown>
   effort: 'low' | 'medium' | 'high'
   maxTokens?: number
+  /** Overrides the main model for this call (Clarify). */
+  model?: string
 }
 
 /** A model call: system prompt + user prompt → raw text (JSON expected). Injectable for tests. */
 export type Complete = (system: string, user: string, options: CompleteOptions) => Promise<string>
 
 /** Resolves provider and model from the environment: explicit ZENDO_AI_PROVIDER, else whichever key exists (Claude first). */
-export function resolveAi(cfg: AiConfig): { provider: AiProviderName; model: string; complete: Complete } | null {
+export function resolveAi(cfg: AiConfig): ResolvedAi | null {
   const provider: AiProviderName | undefined = cfg.provider ?? (cfg.anthropicKey ? 'anthropic' : cfg.openaiKey ? 'openai' : undefined)
   if (!provider) return null
   const model = cfg.model?.trim() || DEFAULT_SERVER_MODELS[provider]
+  const clarifyModel = cfg.clarifyModel?.trim() || DEFAULT_CLARIFY_MODELS[provider] || model
   if (provider === 'anthropic') {
     if (!cfg.anthropicKey) return null
     const client = new Anthropic({ apiKey: cfg.anthropicKey })
     const complete: Complete = async (system, user, options) => {
       // Server-side refusal fallback: if a safety classifier declines, the API reruns on a suitable model.
       const response = await client.beta.messages.create({
-        model,
+        model: options.model ?? model,
         max_tokens: options.maxTokens ?? 16000,
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
@@ -57,12 +71,12 @@ export function resolveAi(cfg: AiConfig): { provider: AiProviderName; model: str
         .map((b) => b.text)
         .join('')
     }
-    return { provider, model, complete }
+    return { provider, model, clarifyModel, complete }
   }
   if (!cfg.openaiKey) return null
   const client = new OpenAI({ apiKey: cfg.openaiKey })
-  const complete: Complete = async (system, user, options) => readOpenAiAnswer(await client.chat.completions.create(openAiRequest(model, system, user, options)))
-  return { provider, model, complete }
+  const complete: Complete = async (system, user, options) => readOpenAiAnswer(await client.chat.completions.create(openAiRequest(options.model ?? model, system, user, options)))
+  return { provider, model, clarifyModel, complete }
 }
 
 /** The OpenAI request: the same schema (strict), effort and output cap as for Claude. */
@@ -101,20 +115,25 @@ export function describeError(err: unknown): { status: 400 | 401 | 429 | 500; er
 
 /**
  * AI routes, mounted at /api/ai. The key comes from .env and never reaches the browser.
- * The server builds the prompt itself: project names (active and planned) are read from the database.
+ * The server builds the prompts itself from the database (Clarify: the overview of src/ai/clarify.ts).
  */
-export function aiRoutes(repo: Repo, ai: { provider: AiProviderName; model: string; complete: Complete } | null): Hono {
+export function aiRoutes(repo: Repo, ai: ResolvedAi | null): Hono {
   const app = new Hono()
-  app.get('/status', (c) => c.json({ configured: !!ai, provider: ai?.provider ?? null, model: ai?.model ?? null }))
+  app.get('/status', (c) => c.json({ configured: !!ai, provider: ai?.provider ?? null, model: ai?.model ?? null, clarifyModel: ai?.clarifyModel ?? null }))
   app.post('/clarify', async (c) => {
     if (!ai) return c.json({ error: 'not_configured' }, 503)
-    const body = (await c.req.json().catch(() => ({}))) as { text?: unknown; locale?: unknown }
+    const body = (await c.req.json().catch(() => ({}))) as { text?: unknown; locale?: unknown; today?: unknown; includePrivate?: unknown }
     if (typeof body.text !== 'string' || !body.text.trim()) throw new BadRequest('text required')
     const locale: Locale = body.locale === 'de' ? 'de' : 'en'
-    const projects = (repo.loadState().projects as unknown as Project[]).filter((p) => p.status === 'active' || p.status === 'planned').map((p) => p.name)
+    const state = repo.loadState()
+    const ctx = buildClarifyContext(
+      { projects: state.projects as unknown as Project[], tasks: state.tasks as unknown as Task[] },
+      // the browser's date (the server may run in another time zone); private items only while they are shown
+      { today: isISODate(body.today) ? body.today : todayISO(), locale, includePrivate: body.includePrivate === true },
+    )
     try {
-      const raw = await ai.complete(CLARIFY_SYSTEM_PROMPT, buildClarifyPrompt({ text: body.text.slice(0, 4000), projects, today: todayISO(), locale }), { schema: CLARIFY_SCHEMA, effort: 'low' })
-      return c.json(parseClarifySuggestion(raw))
+      const raw = await ai.complete(CLARIFY_SYSTEM_PROMPT, buildClarifyPrompt(body.text.slice(0, 4000), ctx), { schema: clarifySchema(ctx), effort: 'low', model: ai.clarifyModel })
+      return c.json(parseClarifySuggestion(raw, ctx))
     } catch (err) {
       const { status, error } = describeError(err)
       console.error('AI clarify failed:', error)

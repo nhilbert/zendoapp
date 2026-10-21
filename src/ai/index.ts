@@ -1,6 +1,7 @@
 import type { Locale, ISODate } from '@/domain/types'
 import { NotConfigured, api } from '@/sync/api'
-import type { ClarifySuggestion } from './clarify'
+import { useStore } from '@/store/useStore'
+import { buildClarifyContext, type ClarifySuggestion } from './clarify'
 import type { WeekProposal } from './week'
 import { aiEnabled, loadAiSettings } from './settings'
 
@@ -12,6 +13,7 @@ export interface AiServerStatus {
   configured: boolean
   provider: 'anthropic' | 'openai' | null
   model: string | null
+  clarifyModel: string | null
 }
 
 export class NoAiKey extends Error {
@@ -23,19 +25,21 @@ export class NoAiKey extends Error {
 export const getAiStatus = () => api<AiServerStatus>('/api/ai/status')
 
 /**
- * "Auto" suggestion for one inbox item. The local server makes the call with the key from .env
- * and reads the project names from the database. Only if the server has no key configured does
- * the browser fall back to a key stored in this browser (legacy).
+ * "Auto" suggestion for one inbox item. The local server makes the call with the key from .env and
+ * builds the overview (projects, open and recently done tasks) from the database; private items only
+ * when they are shown. Only if the server has no key configured does the browser fall back to a key
+ * stored in this browser (legacy), with the same overview built from this browser's data.
  */
-export async function suggestClarification(input: { text: string; projects: string[]; today: ISODate; locale: Locale }): Promise<ClarifySuggestion> {
+export async function suggestClarification(input: { text: string; today: ISODate; locale: Locale; includePrivate: boolean }): Promise<ClarifySuggestion> {
   try {
-    return await api<ClarifySuggestion>('/api/ai/clarify', { method: 'POST', body: JSON.stringify({ text: input.text, locale: input.locale }), timeoutMs: 120_000 })
+    return await api<ClarifySuggestion>('/api/ai/clarify', { method: 'POST', body: JSON.stringify(input), timeoutMs: 120_000 })
   } catch (err) {
     if (!(err instanceof NotConfigured)) throw err
     const settings = loadAiSettings()
     if (!aiEnabled(settings)) throw new NoAiKey()
     const { suggestFromBrowser } = await import('./browser')
-    return suggestFromBrowser(input, settings)
+    const { projects, tasks } = useStore.getState()
+    return suggestFromBrowser(input.text, buildClarifyContext({ projects, tasks }, input), settings)
   }
 }
 
