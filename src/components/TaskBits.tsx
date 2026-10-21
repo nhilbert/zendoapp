@@ -71,7 +71,8 @@ export function useRelDay() {
   }
 }
 
-export function TaskMeta({ task, hideProject, className }: { task: Task; hideProject?: boolean; className?: string }) {
+/** hidePlanned: in a day's plan the planned date is the day itself, so its chip says nothing. */
+export function TaskMeta({ task, hideProject, hidePlanned, className }: { task: Task; hideProject?: boolean; hidePlanned?: boolean; className?: string }) {
   const { t } = useTranslation()
   const projects = useProjectMap()
   const rel = useRelDay()
@@ -93,7 +94,7 @@ export function TaskMeta({ task, hideProject, className }: { task: Task; hidePro
           {overdue ? t('task.overdue') : dueToday ? t('task.dueToday') : t('task.dueOn', { date: rel(task.dueDate) })}
         </Chip>
       )}
-      {task.plannedDate && task.plannedDate !== task.dueDate && (
+      {!hidePlanned && task.plannedDate && task.plannedDate !== task.dueDate && (
         <Chip>
           <Clock size={11} />
           {rel(task.plannedDate)}
@@ -111,7 +112,11 @@ export function TaskMeta({ task, hideProject, className }: { task: Task; hidePro
           {t(`recurrence.${task.recurrence}`)}
         </Chip>
       )}
-      {task.status === 'waiting' && task.waitingFor && <Chip>{task.waitingFor}</Chip>}
+      {task.status === 'waiting' && task.waitingFor && (
+        <Chip className="max-w-full">
+          <span className="min-w-0 truncate">{task.waitingFor}</span>
+        </Chip>
+      )}
     </div>
   )
 }

@@ -209,6 +209,11 @@
     "all": "All projects",
     "chores": "Chores",
     "doneHint": "last 7 days",
+    "prev": "Previous project ([)",
+    "next": "Next project (])",
+    "pick": "Choose a project",
+    "viewList": "List",
+    "viewBoard": "Board",
     "empty": "—",
     "sortUrgency": "Sort by urgency: due within two weeks first, then by priority, far-off due dates last"
   },

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   type CollisionDetection,
@@ -11,7 +11,7 @@ import {
   rectIntersection,
   useDroppable,
 } from '@dnd-kit/core'
-import { ArrowDownNarrowWide, Plus } from 'lucide-react'
+import { ArrowDownNarrowWide, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import type { Task, TaskStatus } from '@/domain/types'
 import { TASK_STATUSES } from '@/domain/types'
 import { sortTasks } from '@/domain/selectors'
@@ -19,10 +19,27 @@ import { useStore } from '@/store/useStore'
 import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, useDndSensors } from '@/components/dnd'
-import { IconButton, PageHeader, Select, cx } from '@/components/ui'
-import { TaskMeta, projectVars, useProjectMap } from '@/components/TaskBits'
+import { IconButton, PageHeader, Segmented, cx, isTyping, useIsPhone } from '@/components/ui'
+import { ProjectDot, TaskMeta, projectVars, useProjectMap } from '@/components/TaskBits'
 
 const CHORES = '__chores__'
+/** Per device: the board opens where it was left (first time: chores), and on phones as a list. */
+const SCOPE_KEY = 'zendo.board.scope'
+const VIEW_KEY = 'zendo.board.view'
+const readLocal = (key: string) => {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+const writeLocal = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // private window or blocked storage: the choice just isn't remembered
+  }
+}
 type Indicator = { cardId: string; position: 'before' | 'after' } | null
 
 /** Prefer the card under the pointer (for positional drops), then the column, then any overlap. */
@@ -45,7 +62,27 @@ export default function BoardPage() {
   const addTask = useStore((s) => s.addTask)
   const openTask = useUi((s) => s.openTask)
   const sensors = useDndSensors()
-  const [filter, setFilter] = useState<string>('')
+  const isPhone = useIsPhone()
+  // One project at a time: chores, then the active and planned projects; "all" only through the picker.
+  const scopes = [CHORES, ...projects.filter((p) => p.status === 'active' || p.status === 'planned').map((p) => p.id)]
+  const [stored, setStored] = useState(() => readLocal(SCOPE_KEY) ?? CHORES)
+  const filter = stored === '' || scopes.includes(stored) ? stored : CHORES
+  const setFilter = (value: string) => {
+    setStored(value)
+    writeLocal(SCOPE_KEY, value)
+  }
+  const step = (delta: 1 | -1) => {
+    const i = scopes.indexOf(filter)
+    setFilter(scopes[i < 0 ? (delta > 0 ? 0 : scopes.length - 1) : (i + delta + scopes.length) % scopes.length])
+  }
+  const [view, setViewState] = useState<'list' | 'board'>(() => (readLocal(VIEW_KEY) === 'board' ? 'board' : 'list'))
+  const setView = (v: 'list' | 'board') => {
+    setViewState(v)
+    writeLocal(VIEW_KEY, v)
+  }
+  const asList = isPhone && view === 'list'
+  // In the phone list, "someday" and "done" start folded so the day's work stays on top.
+  const [unfolded, setUnfolded] = useState<TaskStatus[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [indicator, setIndicator] = useState<Indicator>(null)
   const indicatorRef = useRef<Indicator>(null)
@@ -103,6 +140,19 @@ export default function BoardPage() {
   }
 
   const activeTask = activeId ? tasks.find((x) => x.id === activeId) : undefined
+  const scopeProject = projects.find((p) => p.id === filter)
+  const scopeName = filter === '' ? t('board.all') : filter === CHORES ? t('board.chores') : (scopeProject?.name ?? '')
+
+  // [ and ] step through the projects.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return
+      if (e.key === '[') step(-1)
+      else if (e.key === ']') step(1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   return (
     <div>
@@ -110,62 +160,113 @@ export default function BoardPage() {
         title={t('board.title')}
         subtitle={t('board.subtitle')}
         right={
-          <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-48 md:w-56">
-            <option value="">{t('board.all')}</option>
-            <option value={CHORES}>{t('board.chores')}</option>
-            {projects
-              .filter((p) => p.status === 'active' || p.status === 'planned')
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-          </Select>
+          <div className="flex min-w-0 items-center gap-1">
+            <IconButton label={t('board.prev')} onClick={() => step(-1)}>
+              <ChevronLeft size={16} />
+            </IconButton>
+            {/* the name opens the native picker to jump directly (works with touch and keyboard) */}
+            <label className="relative flex min-w-0 max-w-[62vw] cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-2 md:max-w-[340px]" title={t('board.pick')}>
+              {scopeProject && <ProjectDot color={scopeProject.color} />}
+              <span className="truncate text-[15px] font-medium">{scopeName}</span>
+              <select className="absolute inset-0 cursor-pointer opacity-0" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t('board.pick')}>
+                <option value={CHORES}>{t('board.chores')}</option>
+                {scopes.slice(1).map((id) => (
+                  <option key={id} value={id}>
+                    {projects.find((p) => p.id === id)?.name}
+                  </option>
+                ))}
+                <option value="">{t('board.all')}</option>
+              </select>
+            </label>
+            <IconButton label={t('board.next')} onClick={() => step(1)}>
+              <ChevronRight size={16} />
+            </IconButton>
+          </div>
         }
       />
+      {isPhone && (
+        <div className="mb-4">
+          <Segmented<'list' | 'board'>
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'list', label: t('board.viewList') },
+              { value: 'board', label: t('board.viewBoard') },
+            ]}
+          />
+        </div>
+      )}
       <DndContext sensors={sensors} collisionDetection={boardCollision} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={() => setInd(null)}>
-        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-5 md:gap-4 md:overflow-visible md:px-0 md:pb-0">
+        <div
+          className={
+            asList
+              ? 'flex flex-col gap-3'
+              : '-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-5 md:gap-4 md:overflow-visible md:px-0 md:pb-0'
+          }
+        >
           {TASK_STATUSES.map((status) => {
             const col = column(status)
+            const folded = asList && (status === 'someday' || status === 'done') && !unfolded.includes(status)
+            const label = <span className={cx('text-[12px] font-medium uppercase tracking-[0.1em]', status === 'next' ? 'text-accent' : 'text-ink-3')}>{t(`status.${status}`)}</span>
             return (
               <Droppable
                 key={status}
                 id={`col:${status}`}
-                className="group/col flex min-h-[60vh] w-[82vw] max-w-[340px] shrink-0 snap-start flex-col rounded-2xl bg-surface-2/60 p-2 transition-colors md:w-auto md:max-w-none"
+                className={cx(
+                  'group/col flex flex-col rounded-2xl bg-surface-2/60 p-2 transition-colors',
+                  !asList && 'min-h-[60vh] w-[82vw] max-w-[340px] shrink-0 snap-start md:w-auto md:max-w-none',
+                )}
                 overClassName={indicator ? '' : 'bg-accent-soft/70'}
               >
-                <div className="mb-2 flex items-center justify-between px-2 pt-1">
-                  <span className={cx('text-[12px] font-medium uppercase tracking-[0.1em]', status === 'next' ? 'text-accent' : 'text-ink-3')}>{t(`status.${status}`)}</span>
+                <div className={cx('flex items-center justify-between px-2 pt-1', !folded && 'mb-2')}>
+                  {asList && (status === 'someday' || status === 'done') ? (
+                    <button
+                      type="button"
+                      onClick={() => setUnfolded((u) => (u.includes(status) ? u.filter((x) => x !== status) : [...u, status]))}
+                      aria-expanded={!folded}
+                      className="-my-1 flex items-center gap-1 py-1"
+                    >
+                      {label}
+                      <span className="text-[11px] text-ink-3">{folded ? '▸' : '▾'}</span>
+                    </button>
+                  ) : (
+                    label
+                  )}
                   <span className="flex items-center gap-1">
                     {status !== 'done' && col.length > 1 && (
                       <IconButton label={t('board.sortUrgency')} onClick={() => sortColumnByUrgency(status)} className="reveal h-6 w-6 opacity-0 transition-opacity group-hover/col:opacity-100">
                         <ArrowDownNarrowWide size={13} />
                       </IconButton>
                     )}
-                    <span className="tnum text-[11px] text-ink-3">{status === 'done' ? t('board.doneHint') : col.length || ''}</span>
+                    <span className="tnum text-[11px] text-ink-3">{status === 'done' && !folded ? t('board.doneHint') : col.length || ''}</span>
                   </span>
                 </div>
-                <div className="flex flex-col gap-2">
-                  {col.map((task) => (
-                    <CardSlot key={task.id} task={task} indicator={indicator?.cardId === task.id ? indicator.position : null}>
-                      <Draggable id={`task:${task.id}`} onClick={() => openTask(task.id)}>
-                        <Card task={task} />
-                      </Draggable>
-                    </CardSlot>
-                  ))}
-                </div>
-                {status !== 'done' && <QuickAdd onAdd={(title) => addTask({ title, status, projectId: filter && filter !== CHORES ? filter : null })} />}
+                {!folded && (
+                  <>
+                    <div className="flex flex-col gap-2">
+                      {col.map((task) => (
+                        <CardSlot key={task.id} task={task} indicator={indicator?.cardId === task.id ? indicator.position : null}>
+                          <Draggable id={`task:${task.id}`} onClick={() => openTask(task.id)}>
+                            <Card task={task} hideProject={filter !== ''} />
+                          </Draggable>
+                        </CardSlot>
+                      ))}
+                    </div>
+                    {status !== 'done' && <QuickAdd onAdd={(title) => addTask({ title, status, projectId: filter && filter !== CHORES ? filter : null })} />}
+                  </>
+                )}
               </Droppable>
             )
           })}
         </div>
-        <DragOverlay dropAnimation={null}>{activeTask ? <Card task={activeTask} dragging /> : null}</DragOverlay>
+        <DragOverlay dropAnimation={null}>{activeTask ? <Card task={activeTask} hideProject={filter !== ''} dragging /> : null}</DragOverlay>
       </DndContext>
     </div>
   )
 }
 
-function Card({ task, dragging }: { task: Task; dragging?: boolean }) {
+/** hideProject: with one project (or chores) chosen, every card would repeat its name. */
+function Card({ task, dragging, hideProject }: { task: Task; dragging?: boolean; hideProject?: boolean }) {
   const projectMap = useProjectMap()
   const project = task.projectId ? projectMap.get(task.projectId) : null
   return (
@@ -175,7 +276,7 @@ function Card({ task, dragging }: { task: Task; dragging?: boolean }) {
     >
       {task.priority === 'high' && task.status !== 'done' && <span className="mb-1 block h-1 w-6 rounded-full bg-amber" />}
       <div className={cx('text-[13.5px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
-      <TaskMeta task={task} className="mt-1.5" />
+      <TaskMeta task={task} hideProject={hideProject} className="mt-1.5" />
     </div>
   )
 }

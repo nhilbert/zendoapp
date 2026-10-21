@@ -82,7 +82,7 @@ Priority: **M** must, **S** should, **C** could.
 
 ### 5.5 Board (kanban)
 - **BRD-1 (M) [P]** Columns: Next action · To do · Waiting · Someday · Done (last 7 days). Drag between columns; dropping into "Next action" applies the invariant.
-- **BRD-2 (M) [P]** Filter by project or chores; quick-add at the bottom of each column.
+- **BRD-2 (M) [P]** One project at a time: the header shows "‹ project ›"; ‹ › or the keys [ ] step through chores and the active and planned projects, the name opens a picker to jump (also "All projects"). The board opens where it was left on this device (first time: chores). With one project or chores chosen, cards don't repeat its name. Quick-add at the bottom of each column. On phones a "List | Board" switch (list first, remembered per device): the list stacks the columns as sections, "someday" and "done" folded; drag and drop works in both.
 - **BRD-3 (M) [P]** Free manual ordering: drop a card before or after another (insertion line) or at the end of a column. Manual order is the primary order on the board and the project page; priority and due date are visual signals only. A per-column "sort by urgency" re-applies an automatic order on request: tasks due within the next two weeks first (by due date, overdue on top), then tasks without a due date (by priority), then tasks whose due date is further away (by due date). Swimlanes per project and a WIP hint: later.
 
 ### 5.6 Dates and scheduling
@@ -109,6 +109,7 @@ Priority: **M** must, **S** should, **C** could.
 - **DAY-5 (S) [ ]** "Top 3 for today" marker.
 - **DAY-6 (M) [P]** Rollover: on today, open tasks planned for earlier days are listed once under "Left over" (oldest first, not repeated among the candidates). Per task: plan for today (time of day dropped), back to the list (plan removed), or tick off; or all at once. Nothing moves without a decision.
 - **DAY-7 (M) [P]** The day's blocks from the week plan are shown on Today: project (or chores), share of the day and effective hours, the block's note and the project meetings it contains; on work days without blocks a quiet link to the week view.
+- **DAY-9 (S) [P]** Rows in the day's plan show no planned-date chip (it is always the day shown); deadlines stay.
 - **DAY-8 (M) [P]** Take a planned task off the day without extra controls: on a phone swipe it right (to the next day, time of day dropped) or left (off the plan, back to the lists); the row slides over a plain tint, no icons or labels. On a computer drag it onto › (next day) or onto the candidates (off the plan). Works for list rows and timeline blocks; tap still opens the task, a vertical swipe still scrolls, long-press still drags.
 
 ### 5.9 Daily execution

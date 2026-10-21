@@ -508,7 +508,7 @@ function PlanRow({ task, overlay }: { task: Task; overlay?: boolean }) {
       <Checkbox checked={task.status === 'done'} onChange={(v) => completeTask(task.id, v)} className="mt-[3px]" />
       <div className="min-w-0 flex-1">
         <div className={cx('text-[14px] leading-snug', task.status === 'done' && 'strike')}>{task.title}</div>
-        <TaskMeta task={task} className="mt-1" />
+        <TaskMeta task={task} hidePlanned className="mt-1" />
       </div>
     </div>
   )

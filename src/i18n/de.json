@@ -209,6 +209,11 @@
     "all": "Alle Projekte",
     "chores": "Routinen",
     "doneHint": "letzte 7 Tage",
+    "prev": "Vorheriges Projekt ([)",
+    "next": "Nächstes Projekt (])",
+    "pick": "Projekt wählen",
+    "viewList": "Liste",
+    "viewBoard": "Board",
     "empty": "—",
     "sortUrgency": "Nach Dringlichkeit sortieren: fällig in zwei Wochen zuerst, dann nach Priorität, ferne Fälligkeiten zuletzt"
   },
