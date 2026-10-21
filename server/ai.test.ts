@@ -242,6 +242,13 @@ describe('Clarify overview', () => {
     expect(prompt.trim().endsWith('</inbox_note>')).toBe(true)
   })
 
+  it('never sends the title of a hidden private next action', () => {
+    const tasks = data.tasks.map((t) => (t.id === '1' ? { ...t, private: true } : t))
+    const ctx = buildClarifyContext({ ...data, tasks }, { today: '2026-10-21', locale: 'de', includePrivate: false })
+    expect(ctx.projects[0].nextAction).toBe('(private task)')
+    expect(buildClarifyPrompt('note', ctx)).not.toContain('Send offer to Nordwind')
+  })
+
   it('adds private projects and tasks only while they are shown', () => {
     const ctx = buildClarifyContext(data, { today: '2026-10-21', locale: 'de', includePrivate: true })
     expect(ctx.projects.map((p) => `${p.ref} ${p.name}`)).toEqual(['P1 Garden', 'P2 Workshop Nordwind'])

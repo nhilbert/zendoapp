@@ -80,6 +80,12 @@ export function buildClarifyContext(data: { projects: Project[]; tasks: Task[] }
     if (!opts.includePrivate && (t.private || (t.projectId && privateProjects.has(t.projectId)))) return false
     return t.projectId === null || refOf.has(t.projectId)
   })
+  // A hidden private next action still counts as one, without its title.
+  const shownIds = new Set(visible.map((t) => t.id))
+  const nextTitle = (projectId: string) => {
+    const next = data.tasks.find((t) => t.projectId === projectId && t.status === 'next')
+    return next ? (shownIds.has(next.id) ? next.title : '(private task)') : undefined
+  }
   const toTask = (t: Task, i: number): ClarifyTask => ({
     ref: t.status === 'done' ? undefined : `T${i + 1}`,
     id: t.id,
@@ -110,7 +116,7 @@ export function buildClarifyContext(data: { projects: Project[]; tasks: Task[] }
       dueDate: p.dueDate,
       goals: (p.goals ?? []).map((g) => g.text.trim()).filter(Boolean),
       notes: p.notes?.trim() ? clip(p.notes.trim(), MAX_NOTES) : undefined,
-      nextAction: data.tasks.find((t) => t.projectId === p.id && t.status === 'next')?.title,
+      nextAction: nextTitle(p.id),
     })),
     tasks: [...open, ...done].map(toTask),
   }

@@ -121,6 +121,29 @@ describe('Ops review fixes', () => {
     expect(all.filter((t) => t.status === 'next').map((t) => t.title)).toEqual(['Visible step'])
   })
 
+  it('reports a hidden private next action as present, without its title', () => {
+    const { repo, ops } = setup()
+    ops.projectCreate({ name: 'Work' })
+    ops.taskCreate({ title: 'Secret step', project: 'Work', status: 'next', private: true })
+    const hidden = new Ops(repo, { today: () => TODAY, hidePrivate: true })
+    const [work] = hidden.projectList()
+    expect(work.nextAction).toEqual({ title: '(private task)', private: true })
+    expect(work.missingNextAction).toBeUndefined()
+    expect(hidden.week().activeProjectsWithoutNextAction).toEqual([])
+    expect(JSON.stringify(hidden.projectList())).not.toContain('Secret step')
+  })
+
+  it('masks meetings of a private project even when the meeting itself is not flagged', () => {
+    const { repo, ops } = setup()
+    const family = ops.projectCreate({ name: 'Family', private: true })
+    repo.applyChanges({ upserts: { events: [{ id: 'e1', title: 'Therapy session', location: 'Praxis', date: TODAY, start: '10:00', end: '11:00', kind: 'in_person', source: 'manual', projectId: family.id }] } })
+    const hidden = new Ops(repo, { today: () => TODAY, hidePrivate: true })
+    const text = JSON.stringify(hidden.day(TODAY))
+    expect(text).not.toContain('Therapy')
+    expect(text).not.toContain('Praxis')
+    expect(JSON.stringify(ops.day(TODAY))).toContain('Therapy session')
+  })
+
   it('keeps project names unique against hidden and current projects, preferring current over archived', () => {
     const { repo, ops } = setup()
     ops.projectCreate({ name: 'Garden', private: true })

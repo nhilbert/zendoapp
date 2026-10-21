@@ -26,8 +26,11 @@ type Kind = 'task' | 'project' | 'meeting' | 'someday' | 'didIt' | 'trash'
 const TILES: Kind[] = ['task', 'project', 'meeting', 'someday', 'didIt']
 type Proposal = { status: 'loading' } | { status: 'done'; s: ClarifySuggestion } | { status: 'error'; message: string }
 const AI_KINDS: Record<ClarifySuggestion['kind'], Kind> = { task: 'task', project: 'project', meeting: 'meeting', someday: 'someday', trash: 'trash' }
-/** A proposal belongs to an item's text: editing the note asks again. */
-const proposalKey = (i: InboxItem) => `${i.id}\n${i.text}`
+/**
+ * A proposal belongs to an item's text (editing the note asks again) and to what the AI was shown:
+ * one made while private items were shown is never offered after hiding them.
+ */
+const proposalKey = (i: InboxItem, hidePrivate: boolean) => `${hidePrivate ? 'h' : 'a'}\n${i.id}\n${i.text}`
 const ESTIMATES = [15, 30, 60, 120, 240, 480] as const
 const NEW = '__new__'
 
@@ -80,7 +83,7 @@ export default function ClarifyPage() {
   // so going back and choosing again keeps what was typed.
   const prefilled = useRef<string | null>(null)
   const opened = useRef<string | null>(null)
-  const key = item ? proposalKey(item) : ''
+  const key = item ? proposalKey(item, hidePrivate) : ''
   const proposal = item ? proposals.current.get(key) : undefined
   const proposed = proposal?.status === 'done' ? (AI_KINDS[proposal.s.kind] ?? 'task') : null
   const nextItem = index >= 0 ? inbox[index + 1] : undefined
@@ -139,7 +142,7 @@ export default function ClarifyPage() {
   }
 
   const request = (it: InboxItem, retry = false) => {
-    const k = proposalKey(it)
+    const k = proposalKey(it, hidePrivate)
     const known = proposals.current.get(k)
     if (known && !(retry && known.status === 'error')) return
     proposals.current.set(k, { status: 'loading' })

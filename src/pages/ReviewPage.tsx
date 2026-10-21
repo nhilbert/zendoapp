@@ -140,6 +140,7 @@ function Daily({ date, setDate }: { date: string; setDate: (d: string) => void }
   const locale = useLocale()
   const today = todayISO()
   const tasks = useVisibleTasks()
+  const allTasks = useStore((s) => s.tasks)
   const events = useVisibleEvents()
   const blocks = useVisibleBlocks()
   const projects = useVisibleProjects()
@@ -154,7 +155,8 @@ function Daily({ date, setDate }: { date: string; setDate: (d: string) => void }
   const tomorrowTasks = tasksPlannedOn(tasks, tomorrow).filter(isOpen)
   const tomorrowEvents = eventsOn(events, tomorrow)
   const tomorrowBlocks = blocksOn(blocks, tomorrow)
-  const missing = projectsWithoutNextAction(projects, tasks)
+  // a hidden private next action is still the project's next action
+  const missing = projectsWithoutNextAction(projects, allTasks)
 
   return (
     <div className="flex flex-col gap-10">
@@ -239,6 +241,7 @@ function Weekly({ monday, setMonday }: { monday: string; setMonday: (d: string) 
   const locale = useLocale()
   const today = todayISO()
   const tasks = useVisibleTasks()
+  const allTasks = useStore((s) => s.tasks)
   const projects = useVisibleProjects()
   const blocks = useVisibleBlocks()
   const settings = useStore((s) => s.settings)
@@ -246,7 +249,8 @@ function Weekly({ monday, setMonday }: { monday: string; setMonday: (d: string) 
   const rows = plannedVsActual(days, projects, tasks, blocks, settings)
   const max = Math.max(1, ...rows.map((r) => Math.max(r.plannedMinutes, r.actualMinutes)))
   const doneCount = rows.reduce((n, r) => n + r.doneCount, 0)
-  const missing = projectsWithoutNextAction(projects, tasks)
+  // a hidden private next action is still the project's next action
+  const missing = projectsWithoutNextAction(projects, allTasks)
   const waiting = tasks.filter((x) => x.status === 'waiting')
   const overdue = overdueTasks(tasks, today)
   const label = `${t('review.weekOf', { week: isoWeekNumber(monday) })} · ${fmtDate(monday, locale)} – ${fmtDate(days[6], locale)}`

@@ -30,6 +30,7 @@ export default function TodayPage() {
   const setDate = (d: ISODate) => setParams(d === today ? {} : { date: d })
 
   const tasks = useVisibleTasks()
+  const allTasks = useStore((s) => s.tasks)
   const projects = useVisibleProjects()
   const events = useVisibleEvents()
   const blocks = useVisibleBlocks()
@@ -55,7 +56,8 @@ export default function TodayPage() {
   // Rollover: on today, unfinished tasks from earlier days are offered once (and not repeated among the candidates).
   const leftovers = date === today ? leftoverTasks(tasks, today) : []
   const cands = candidatesForDay(date, tasks, blocks, projects, new Set(leftovers.map((x) => x.id)))
-  const missingNext = projectsWithoutNextAction(projects, tasks)
+  // All tasks count here: a hidden private next action is still the project's next action.
+  const missingNext = projectsWithoutNextAction(projects, allTasks)
   const dayReview = reviews.find((r) => r.kind === 'daily' && r.date === date)
   const [notes, setNotes] = useState(dayReview?.notes ?? '')
   useEffect(() => setNotes(dayReview?.notes ?? ''), [date, dayReview?.notes])

@@ -152,7 +152,10 @@ export class Ops {
       tasks: data.tasks.filter((t) => !hiddenTask(t)),
       hidden: { projects: data.projects.filter((p) => p.private), tasks: data.tasks.filter(hiddenTask) },
       blocks: data.blocks.filter((b) => !(b.projectId && hidden.has(b.projectId))),
-      events: data.events.map((e) => (e.private ? { ...e, title: 'private', location: undefined, joinUrl: undefined } : e)),
+      // a meeting of a private project is as private as the project, flagged or not
+      events: data.events.map((e) =>
+        e.private || (e.projectId && hidden.has(e.projectId)) ? { ...e, title: 'private', location: undefined, joinUrl: undefined, projectId: null } : e,
+      ),
     }
   }
 
@@ -236,6 +239,8 @@ export class Ops {
   private projectSummary(d: Data, p: Project) {
     const open = d.tasks.filter((t) => t.projectId === p.id && isOpen(t))
     const next = nextActionOf(d.tasks, p.id)
+    // a hidden private next action is still one: reported without its title, so nobody adds a second
+    const hiddenNext = !next && nextActionOf(d.hidden.tasks, p.id)
     const meeting = upcomingMeetings(d.events, p.id, this.today(), this.now())[0]
     return compact({
       id: p.id,
@@ -244,8 +249,8 @@ export class Ops {
       goal: p.goals?.[0]?.text,
       dueDate: p.dueDate,
       private: p.private || undefined,
-      nextAction: next ? { id: next.id, title: next.title } : undefined,
-      missingNextAction: p.status === 'active' && !next ? true : undefined,
+      nextAction: next ? { id: next.id, title: next.title } : hiddenNext ? { title: '(private task)', private: true } : undefined,
+      missingNextAction: p.status === 'active' && !next && !hiddenNext ? true : undefined,
       openTasks: open.length,
       nextMeeting: meeting ? `${meeting.date} ${meeting.allDay ? '' : meeting.start} ${meeting.title}`.replace(/\s+/g, ' ') : undefined,
     })
@@ -656,7 +661,7 @@ export class Ops {
       projectDeadlines: d.projects
         .filter((p) => p.status !== 'archived' && p.dueDate && p.dueDate <= end)
         .map((p) => ({ project: p.name, dueDate: p.dueDate })),
-      activeProjectsWithoutNextAction: projectsWithoutNextAction(d.projects, d.tasks).map((p) => p.name),
+      activeProjectsWithoutNextAction: projectsWithoutNextAction(d.projects, [...d.tasks, ...d.hidden.tasks]).map((p) => p.name),
       week: { workDays: d.settings.workDays, dayCapacityHours: d.settings.dayCapacityHours, workday: `${d.settings.workdayStart}–${d.settings.workdayEnd}` },
     }
   }
