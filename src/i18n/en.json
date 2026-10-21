@@ -135,7 +135,8 @@
       "justSave": "Just save",
       "justTrash": "Just delete",
       "addNote": "Add as note",
-      "createAnyway": "Create anyway"
+      "createAnyway": "Create anyway",
+      "gone": "That task no longer exists – save the note as a new item instead."
     }
   },
   "priority": {

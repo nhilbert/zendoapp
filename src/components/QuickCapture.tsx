@@ -14,8 +14,8 @@ export default function QuickCapture() {
   const ref = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
+    // A capture closed without Enter (Escape, a stray click) is kept for the next opening.
     if (open) {
-      setText('')
       setCaptured(false)
       window.setTimeout(() => ref.current?.focus(), 10)
     }

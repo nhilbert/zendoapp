@@ -8,7 +8,7 @@ import { todayISO } from '@/domain/dates'
 import { isValidEventTimes } from '@/components/EventDialog'
 import { nextActionOf } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
-import { useHidePrivate, useVisibleProjects, useVisibleTasks } from '@/store/visible'
+import { useHidePrivate, useVisibleProjects } from '@/store/visible'
 import { Button, Checkbox, Empty, Field, Input, Segmented, Select, Textarea, cx } from '@/components/ui'
 import { fmtEstimate } from '@/components/TaskBits'
 import { aiErrorText } from '@/ai/errors'
@@ -37,7 +37,6 @@ export default function ClarifyPage() {
   const [params, setParams] = useSearchParams()
   const inbox = useStore((s) => s.inbox)
   const projects = useVisibleProjects()
-  const tasks = useVisibleTasks()
   const hidePrivate = useHidePrivate()
   const autoClarify = useStore((s) => !!s.settings.autoClarify)
   const store = useStore()
@@ -118,11 +117,21 @@ export default function ClarifyPage() {
     opened.current = null
   }, [item?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // "Make next action" defaults to on when the project has none yet.
+  // Editing the note on step 1 carries over into the form (title from its first line, the rest as note).
+  // Going back from the form keeps what was typed there: the text has not changed then.
   useEffect(() => {
-    if (projectId && projectId !== NEW) setMakeNext(!nextActionOf(tasks, projectId))
+    if (!item || step !== 'kind') return
+    const [first, ...rest] = item.text.split('\n')
+    setTitle(first.slice(0, 140))
+    setNote(rest.join('\n').trim())
+  }, [item?.text]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Make next action" defaults to on when the project has none yet – set when the project is chosen, so a
+  // background sync cannot undo the user's choice. All tasks count: a hidden private next action is one too.
+  useEffect(() => {
+    if (projectId && projectId !== NEW) setMakeNext(!nextActionOf(useStore.getState().tasks, projectId))
     else if (!projectId) setMakeNext(false)
-  }, [projectId, tasks])
+  }, [projectId])
 
   const finish = () => {
     if (item) store.removeInboxItem(item.id)
@@ -170,6 +179,7 @@ export default function ClarifyPage() {
       if (s.priority) setPriority(s.priority)
       if (s.dueDate) setDue(s.dueDate)
       if (s.plannedDate) setPlanned(s.plannedDate)
+      if (k === 'meeting' && (s.plannedDate || s.dueDate)) setEvDate((s.plannedDate || s.dueDate)!)
       if (s.note) setNote(s.note)
       setMore(!!(s.dueDate || s.plannedDate || s.note))
     }
@@ -251,6 +261,12 @@ export default function ClarifyPage() {
   const save = (withRelated = true) => {
     if (!item) return
     if (asNote && withRelated) {
+      // The linked task may be gone by now (deleted elsewhere): then the note stays in the inbox.
+      if (!useStore.getState().tasks.some((x) => x.id === related.taskId)) {
+        setRelated(null)
+        setFormError(t('clarify.related.gone'))
+        return
+      }
       store.addTaskNote(related.taskId, item.text)
       finish()
       return
@@ -283,7 +299,7 @@ export default function ClarifyPage() {
       }
       case 'project': {
         if (!newProjectName.trim() && !title.trim()) return
-        const p = store.addProject({ name: newProjectName || item.text.split('\n')[0], goals: firstGoal, dueDate: due || undefined, notes: note || undefined, private: isPrivate || undefined })
+        const p = store.addProject({ name: newProjectName.trim() || item.text.split('\n')[0], goals: firstGoal, dueDate: due || undefined, notes: note || undefined, private: isPrivate || undefined })
         if (title.trim()) store.addTask({ title, projectId: p.id, status: 'next', priority, estimateMinutes: estimate })
         break
       }
@@ -322,6 +338,17 @@ export default function ClarifyPage() {
         <option value={NEW}>{t('clarify.form.newProject')}</option>
       </Select>
     </Field>
+  )
+
+  const newProjectFields = projectId === NEW && (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <Field label={t('clarify.form.projectName')}>
+        <Input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder={title} />
+      </Field>
+      <Field label={t('clarify.form.goal')} hint={t('common.optional')}>
+        <Input value={goal} onChange={(e) => setGoal(e.target.value)} />
+      </Field>
+    </div>
   )
 
   const estimateRow = (
@@ -476,16 +503,7 @@ export default function ClarifyPage() {
                       <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
                     </Field>
                     {projectSelect}
-                    {projectId === NEW && (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <Field label={t('clarify.form.projectName')}>
-                          <Input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} />
-                        </Field>
-                        <Field label={t('clarify.form.goal')} hint={t('common.optional')}>
-                          <Input value={goal} onChange={(e) => setGoal(e.target.value)} />
-                        </Field>
-                      </div>
-                    )}
+                    {newProjectFields}
                     {estimateRow}
                     {projectId && projectId !== NEW && (
                       <label className="flex items-center gap-2 text-[13px] text-ink-2">
@@ -577,6 +595,7 @@ export default function ClarifyPage() {
                       </Field>
                     </div>
                     {projectSelect}
+                    {newProjectFields}
                   </>
                 )}
 
@@ -586,6 +605,7 @@ export default function ClarifyPage() {
                       <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
                     </Field>
                     {projectSelect}
+                    {newProjectFields}
                     {!projectId && privateToggle}
                   </>
                 )}

@@ -125,7 +125,7 @@ Rules:
 - newProjectName / goal (one sentence, the project's main goal): only when kind is "project".
 - estimateMinutes: one of 15, 30, 60, 120, 240, 480.
 - priority: "high" only for clearly urgent/important, otherwise "normal" or "low".
-- dueDate: only if the note states a hard external deadline. plannedDate: only if the note says when the user wants to do it. ISO format YYYY-MM-DD, relative to today.
+- dueDate: only if the note states a hard external deadline. plannedDate: only if the note says when the user wants to do it; for a meeting, the meeting's date. ISO format YYYY-MM-DD, relative to today.
 - note: optional short context to keep, max 200 characters.
 - related: only if the note clearly concerns one open task (by its ref, e.g. "T4"): relation "completes" if the note reports that task done or answers what the user is waiting for; "duplicate" if the note asks for that task again. Otherwise null. Still fill in kind and title for anything new the note asks for; if it asks for nothing new, kind is "trash".
 - reasoning: one short sentence. If the note matches work already done recently, say so here.

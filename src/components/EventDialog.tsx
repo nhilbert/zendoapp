@@ -36,8 +36,11 @@ export default function EventDialog() {
   const [scope, setScope] = useState<SeriesScope>('series')
   const seriesProject = existing?.seriesId ? projects.find((p) => p.meetingSeries?.includes(existing.seriesId!)) : undefined
 
+  // A fresh draft when the dialog opens (or opens another event) – not when a sync replaces the stored
+  // record meanwhile, which would throw away what is being typed.
   useEffect(() => {
     if (!ui) return
+    setError(null)
     if (existing) {
       setDraft({ ...existing })
       // A meeting that follows its series changes the series by default; an exception changes only itself.
@@ -45,7 +48,7 @@ export default function EventDialog() {
     } else {
       setDraft({ ...EMPTY, date: todayISO(), ...ui.draft })
     }
-  }, [ui, existing])
+  }, [ui, existing?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ui) return null
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }))

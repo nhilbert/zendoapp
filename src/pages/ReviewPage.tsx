@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -68,16 +68,45 @@ function Journal({ kind, date }: { kind: Mode; date: string }) {
   const review = useStore((s) => s.reviews.find((r) => r.kind === kind && r.date === date))
   const saveReview = useStore((s) => s.saveReview)
   const [value, setValue] = useState(review?.notes ?? '')
-  useEffect(() => setValue(review?.notes ?? ''), [date, review?.notes])
+  const latest = useRef(value)
+  const typing = useRef(false)
+  const edit = (v: string) => {
+    latest.current = v
+    setValue(v)
+  }
+  // only persist real changes – visiting a day must not create an empty review
+  const persist = (v: string) => {
+    const stored = useStore.getState().reviews.find((r) => r.kind === kind && r.date === date)?.notes ?? ''
+    if (v !== stored) saveReview(kind, date, v)
+  }
+  // Another day, or a change from elsewhere while not typing here.
+  useEffect(() => edit(review?.notes ?? ''), [kind, date]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!typing.current) edit(review?.notes ?? '')
+  }, [review?.notes])
+  // Saved shortly after typing stops, and when the day, the page or the tab is left – not only on blur.
+  useEffect(() => {
+    const timer = window.setTimeout(() => persist(value), 800)
+    return () => window.clearTimeout(timer)
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const onHide = () => persist(latest.current)
+    window.addEventListener('pagehide', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      persist(latest.current)
+    }
+  }, [kind, date]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div>
       <SectionLabel>{t('review.journal')}</SectionLabel>
       <Textarea
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => edit(e.target.value)}
+        onFocus={() => (typing.current = true)}
         onBlur={() => {
-          // only persist real changes – visiting a day must not create an empty review
-          if (value !== (review?.notes ?? '')) saveReview(kind, date, value)
+          typing.current = false
+          persist(value)
         }}
         placeholder={kind === 'daily' ? t('review.journalDaily') : t('review.journalWeekly')}
         className="min-h-[120px]"

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, X } from 'lucide-react'
 import type { Priority, Recurrence, TaskStatus } from '@/domain/types'
@@ -24,6 +24,8 @@ export default function TaskDrawer() {
   const deleteTask = useStore((s) => s.deleteTask)
   const addTaskNote = useStore((s) => s.addTaskNote)
   const [note, setNote] = useState('')
+  // an unsent note belongs to the task it was typed for
+  useEffect(() => setNote(''), [taskId])
 
   if (!task) return null
 

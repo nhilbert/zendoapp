@@ -135,7 +135,8 @@
       "justSave": "Nur speichern",
       "justTrash": "Nur löschen",
       "addNote": "Als Notiz anhängen",
-      "createAnyway": "Trotzdem neu anlegen"
+      "createAnyway": "Trotzdem neu anlegen",
+      "gone": "Diese Aufgabe gibt es nicht mehr – den Eintrag stattdessen neu anlegen."
     }
   },
   "priority": {
