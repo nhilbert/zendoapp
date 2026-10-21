@@ -11,6 +11,7 @@ import { type M365Status, NotConfigured, ServiceUnavailable, connect, disconnect
 import { useSync } from '@/store/useSync'
 import { PRE_SYNC_BACKUP } from '@/sync/server'
 import { useLocale } from '@/components/TaskBits'
+import { AgentConnections } from '@/components/AgentConnections'
 import { Button, Field, Input, Kbd, PageHeader, SectionLabel, Segmented, Select, cx } from '@/components/ui'
 
 export default function SettingsPage() {
@@ -239,6 +240,8 @@ export default function SettingsPage() {
           <Button onClick={() => icsRef.current?.click()}>{t('settings.importIcs')}</Button>
           {icsMsg && <p className="fade-in mt-2 text-[12px] text-accent">{icsMsg}</p>}
         </section>
+
+        <AgentConnections />
 
         <section>
           <SectionLabel>{t('settings.ai')}</SectionLabel>

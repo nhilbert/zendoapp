@@ -406,7 +406,15 @@
     "aiServer": "Der Zendo-Server nutzt {{provider}} · {{model}} mit dem dort hinterlegten Schlüssel. „Auto“ beim Klären sendet den Eingangstext und die Projektnamen; „Vorschlagen“ in der Woche sendet Projektnamen, Hauptziele, Fälligkeiten, Zahlen zur offenen Arbeit und freie Stunden pro Tag – keine Aufgaben- oder Termintitel.",
     "aiServerMissing": "Kein KI-Schlüssel auf dem Zendo-Server. ANTHROPIC_API_KEY (oder OPENAI_API_KEY) in seinen Einstellungen eintragen und Zendo neu starten; der Schlüssel bleibt auf dem Server und erreicht nie den Browser.",
     "aiBrowserFallback": "Fallback: Schlüssel in diesem Browser",
-    "aiRemoveBrowserKey": "Im Browser gespeicherten Schlüssel entfernen (nicht mehr nötig)"
+    "aiRemoveBrowserKey": "Im Browser gespeicherten Schlüssel entfernen (nicht mehr nötig)",
+    "agents": "KI-Agenten (MCP)",
+    "agentsHint": "Agenten wie Claude verbinden sich per OAuth und können dann Eingang, Aufgaben, Projekte, Plan und Rückblick-Notizen lesen und ändern. Trennen beendet den Zugriff sofort.",
+    "agentsOff": "Auf dem Server nicht aktiviert. Mit ZENDO_MCP_OAUTH=1 (siehe docs/mcp.md) kann sich Claude verbinden.",
+    "agentsNone": "Kein Agent verbunden.",
+    "agentsSince": "verbunden am {{date}} von {{user}}",
+    "agentsLastUsed": "zuletzt genutzt {{date}}",
+    "agentsDisconnectConfirm": "{{name}} trennen? Der Zugriff endet sofort und muss neu freigegeben werden.",
+    "agentsError": "Verbindungen konnten nicht geladen oder geändert werden ({{error}}). Bitte erneut versuchen; bis dahin bleiben sie unverändert."
   },
   "weekday": {
     "1": "Mo",
