@@ -105,6 +105,9 @@
     "ai": {
       "suggest": "Vorschlag",
       "thinking": "Denke nach…",
+      "proposal": "Vorschlag: {{summary}}",
+      "accept": "Vorschlag übernehmen",
+      "retry": "Erneut versuchen",
       "applied": "Vorschlag übernommen – prüfen und anpassen.",
       "error": "KI-Anfrage fehlgeschlagen: {{message}}",
       "noKey": "Kein KI-Schlüssel auf dem Zendo-Server (ANTHROPIC_API_KEY).",
@@ -121,11 +124,18 @@
     "more": "Mehr Optionen",
     "less": "Weniger Optionen",
     "keys": "1–5 wählen · 6 Papierkorb · a Auto",
+    "keysProposal": "↵ Vorschlag · 1–5 wählen · 6 Papierkorb",
     "aiSuggests": "KI schlägt vor: {{kind}}",
     "confirmTrash": "Löschen und weiter",
     "related": {
-      "completes": "„{{title}}“ abhaken",
-      "duplicate": "Nur als Notiz zu „{{title}}“"
+      "completes": "Erledigt damit: „{{title}}“",
+      "duplicate": "Gibt es schon: „{{title}}“",
+      "tickAndSave": "Abhaken & speichern",
+      "tickAndNext": "Abhaken & weiter",
+      "justSave": "Nur speichern",
+      "justTrash": "Nur löschen",
+      "addNote": "Als Notiz anhängen",
+      "createAnyway": "Trotzdem neu anlegen"
     }
   },
   "priority": {
@@ -408,6 +418,8 @@
     "importInvalid": "Diese Datei ist kein Zendo-Export. Es wurde nichts geändert.",
     "m365NotConfigured": "Microsoft 365 ist nicht konfiguriert: MS_CLIENT_ID und MS_TENANT_ID in .env eintragen (siehe docs/outlook-setup.md) und neu starten.",
     "aiServer": "Der Zendo-Server nutzt {{provider}} mit dem dort hinterlegten Schlüssel: {{clarifyModel}} für „Auto“ beim Klären, {{model}} für „Vorschlagen“ in der Woche. „Auto“ sendet den Eingangstext und einen Überblick über deine aktiven und geplanten Projekte (Namen, Ziele, Notizen, nächster Schritt) sowie deine offenen und kürzlich erledigten Aufgaben (Titel, Status, Daten) – keine Aufgabennotizen, keine Termine. „Vorschlagen“ sendet Projektnamen, Hauptziele, Fälligkeiten, Zahlen zur offenen Arbeit und freie Stunden pro Tag – keine Aufgaben- oder Termintitel. Privates nur, solange es angezeigt wird.",
+    "aiAuto": "Beim Klären automatisch einen Vorschlag holen",
+    "aiAutoHint": "Sendet jeden Eintrag (und den nächsten vorab), sobald er beim Klären erscheint – nicht erst auf „a“.",
     "aiServerMissing": "Kein KI-Schlüssel auf dem Zendo-Server. ANTHROPIC_API_KEY (oder OPENAI_API_KEY) in seinen Einstellungen eintragen und Zendo neu starten; der Schlüssel bleibt auf dem Server und erreicht nie den Browser.",
     "aiBrowserFallback": "Fallback: Schlüssel in diesem Browser",
     "aiRemoveBrowserKey": "Im Browser gespeicherten Schlüssel entfernen (nicht mehr nötig)",

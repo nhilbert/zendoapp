@@ -12,7 +12,7 @@ import { useSync } from '@/store/useSync'
 import { PRE_SYNC_BACKUP } from '@/sync/server'
 import { useLocale } from '@/components/TaskBits'
 import { AgentConnections } from '@/components/AgentConnections'
-import { Button, Field, Input, Kbd, PageHeader, SectionLabel, Segmented, Select, cx } from '@/components/ui'
+import { Button, Checkbox, Field, Input, Kbd, PageHeader, SectionLabel, Segmented, Select, cx } from '@/components/ui'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -251,6 +251,15 @@ export default function SettingsPage() {
             </p>
           ) : (
             <p className="mb-3 text-[13px] text-ink-2">{t('settings.aiServerMissing')}</p>
+          )}
+          {(aiServer?.configured || ai.apiKey) && (
+            <label className="mb-3 flex items-start gap-2 text-[13px] text-ink">
+              <Checkbox checked={!!settings.autoClarify} onChange={(v) => updateSettings({ autoClarify: v || undefined })} className="mt-0.5" />
+              <span>
+                {t('settings.aiAuto')}
+                <span className="block text-[12px] text-ink-3">{t('settings.aiAutoHint')}</span>
+              </span>
+            </label>
           )}
           {aiServer?.configured ? (
             ai.apiKey && (

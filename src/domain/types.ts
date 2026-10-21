@@ -194,6 +194,8 @@ export interface Settings {
   dayCapacityHours: number
   /** Hide private tasks, projects and their blocks everywhere (toggle in the sidebar, key h). */
   hidePrivate?: boolean
+  /** Clarify asks the AI for a proposal by itself (current and next item), instead of only on "a". */
+  autoClarify?: boolean
   /** Microsoft 365 connection as last seen by the app (the token cache lives in the calendar service). */
   calendar?: { account: string | null; lastSync?: ISODateTime }
 }

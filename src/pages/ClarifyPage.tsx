@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Sparkles, Trash2 } from 'lucide-react'
-import type { EventKind, Priority, Recurrence } from '@/domain/types'
+import type { EventKind, InboxItem, Priority, Recurrence } from '@/domain/types'
 import { EVENT_KINDS, RECURRENCES } from '@/domain/types'
 import { todayISO } from '@/domain/dates'
 import { isValidEventTimes } from '@/components/EventDialog'
@@ -18,9 +18,16 @@ import { NoAiKey, suggestClarification, type ClarifySuggestion } from '@/ai'
  * Clarify – two steps, one item at a time.
  *  1. "What is it?"  – six decisions plus Auto (AI). Trash and "did it" act immediately.
  *  2. Details        – only the fields that matter for the chosen kind; the rest behind "More".
+ * With "automatic proposal" on (Settings), the AI is asked in the background for the current and the next
+ * item; its kind is marked on step 1 and Enter opens it. A proposal only prefills a form when one is opened,
+ * so an answer that arrives late never overrides a choice already made.
  */
 type Kind = 'task' | 'project' | 'meeting' | 'someday' | 'didIt' | 'trash'
 const TILES: Kind[] = ['task', 'project', 'meeting', 'someday', 'didIt']
+type Proposal = { status: 'loading' } | { status: 'done'; s: ClarifySuggestion } | { status: 'error'; message: string }
+const AI_KINDS: Record<ClarifySuggestion['kind'], Kind> = { task: 'task', project: 'project', meeting: 'meeting', someday: 'someday', trash: 'trash' }
+/** A proposal belongs to an item's text: editing the note asks again. */
+const proposalKey = (i: InboxItem) => `${i.id}\n${i.text}`
 const ESTIMATES = [15, 30, 60, 120, 240, 480] as const
 const NEW = '__new__'
 
@@ -32,6 +39,7 @@ export default function ClarifyPage() {
   const projects = useVisibleProjects()
   const tasks = useVisibleTasks()
   const hidePrivate = useHidePrivate()
+  const autoClarify = useStore((s) => !!s.settings.autoClarify)
   const store = useStore()
 
   const requested = params.get('id')
@@ -59,12 +67,24 @@ export default function ClarifyPage() {
   const [evEnd, setEvEnd] = useState('10:00')
   const [evKind, setEvKind] = useState<EventKind>('online')
   const [evLocation, setEvLocation] = useState('')
-  const [ai, setAi] = useState<{ status: 'idle' | 'loading' | 'done' | 'error'; message?: string }>({ status: 'idle' })
+  // The form follows the AI's proposal (its kind was taken): header and reasoning say so.
+  const [ai, setAi] = useState<{ status: 'idle' | 'done'; message?: string }>({ status: 'idle' })
   const [formError, setFormError] = useState<string | null>(null)
-  // An existing task the AI linked the note to; preset on, so saving accepts the whole suggestion in one click.
+  // An existing task the AI linked the note to. Nothing happens to it unless the named main button is used.
   const [related, setRelated] = useState<ClarifySuggestion['related']>(null)
-  const [relatedOn, setRelatedOn] = useState(true)
-  const asNote = related?.relation === 'duplicate' && relatedOn
+  const asNote = related?.relation === 'duplicate'
+  const proposals = useRef(new Map<string, Proposal>())
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
+  // "a" pressed before the answer arrived: open the proposal as soon as it is there.
+  const [awaiting, setAwaiting] = useState<string | null>(null)
+  // The proposal fills the fields once per item, and after a form was already open only when its kind is taken,
+  // so going back and choosing again keeps what was typed.
+  const prefilled = useRef<string | null>(null)
+  const opened = useRef<string | null>(null)
+  const key = item ? proposalKey(item) : ''
+  const proposal = item ? proposals.current.get(key) : undefined
+  const proposed = proposal?.status === 'done' ? (AI_KINDS[proposal.s.kind] ?? 'task') : null
+  const nextItem = index >= 0 ? inbox[index + 1] : undefined
 
   // Fresh form for every item.
   useEffect(() => {
@@ -93,7 +113,9 @@ export default function ClarifyPage() {
     setAi({ status: 'idle' })
     setFormError(null)
     setRelated(null)
-    setRelatedOn(true)
+    setAwaiting(null)
+    prefilled.current = null
+    opened.current = null
   }, [item?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Make next action" defaults to on when the project has none yet.
@@ -107,6 +129,58 @@ export default function ClarifyPage() {
     if (requested) setParams({})
   }
 
+  const request = (it: InboxItem, retry = false) => {
+    const k = proposalKey(it)
+    const known = proposals.current.get(k)
+    if (known && !(retry && known.status === 'error')) return
+    proposals.current.set(k, { status: 'loading' })
+    rerender()
+    suggestClarification({ text: it.text, today: todayISO(), locale: i18n.language.startsWith('de') ? 'de' : 'en', includePrivate: !hidePrivate })
+      .then((s) => proposals.current.set(k, { status: 'done', s }))
+      .catch((err) => proposals.current.set(k, { status: 'error', message: err instanceof NoAiKey ? t('clarify.ai.noKey') : t('clarify.ai.error', { message: aiErrorText(err, t) }) }))
+      .finally(rerender)
+  }
+
+  // Automatic proposal: ask for this item and the next one (a moment after the note was last edited).
+  useEffect(() => {
+    if (!autoClarify || !item) return
+    const timer = window.setTimeout(
+      () => {
+        request(item)
+        if (nextItem) request(nextItem)
+      },
+      proposals.current.has(key) ? 0 : 600,
+    )
+    return () => window.clearTimeout(timer)
+  }, [autoClarify, key, nextItem?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Opens the form for k, prefilled from the proposal where it fits; the link to another task only with the proposed kind. */
+  const open = (k: Kind) => {
+    const s = proposal?.status === 'done' ? proposal.s : null
+    const fill = !!s && prefilled.current !== key && (opened.current !== key || k === proposed)
+    opened.current = key
+    if (s && fill) {
+      prefilled.current = key
+      if (s.title) setTitle(s.title)
+      if (k === 'project') {
+        setNewProjectName(s.newProjectName || s.title)
+        setGoal(s.goal ?? '')
+      } else setProjectId(s.projectId && activeProjects.some((p) => p.id === s.projectId) ? s.projectId : '')
+      if (s.estimateMinutes) setEstimate(s.estimateMinutes)
+      if (s.priority) setPriority(s.priority)
+      if (s.dueDate) setDue(s.dueDate)
+      if (s.plannedDate) setPlanned(s.plannedDate)
+      if (s.note) setNote(s.note)
+      setMore(!!(s.dueDate || s.plannedDate || s.note))
+    }
+    const asProposed = !!s && k === proposed
+    setRelated(asProposed ? (s.related ?? null) : null)
+    setAi(asProposed ? { status: 'done', message: s.reasoning ?? undefined } : { status: 'idle' })
+    setAwaiting(null)
+    setKind(k)
+    setStep('form')
+  }
+
   const choose = (k: Kind) => {
     if (!item) return
     if (k === 'trash') {
@@ -118,9 +192,7 @@ export default function ClarifyPage() {
       finish()
       return
     }
-    setKind(k)
-    setRelated(null)
-    setStep('form')
+    open(k)
   }
 
   const skip = () => {
@@ -129,39 +201,18 @@ export default function ClarifyPage() {
     if (requested) setParams({})
   }
 
-  const runAuto = async () => {
+  /** Auto (a): open the proposal, ask again after an error, or wait for the answer and then open it. */
+  const runAuto = () => {
     if (!item) return
-    setAi({ status: 'loading' })
-    try {
-      const s = await suggestClarification({ text: item.text, today: todayISO(), locale: i18n.language.startsWith('de') ? 'de' : 'en', includePrivate: !hidePrivate })
-      const map: Record<string, Kind> = { task: 'task', project: 'project', meeting: 'meeting', someday: 'someday', trash: 'trash' }
-      const k = map[s.kind] ?? 'task'
-      setKind(k)
-      if (s.title) setTitle(s.title)
-      if (k === 'project') {
-        setNewProjectName(s.newProjectName || s.title)
-        setGoal(s.goal ?? '')
-      } else {
-        const match = s.projectId ? activeProjects.find((p) => p.id === s.projectId) : undefined
-        setProjectId(match?.id ?? '')
-      }
-      if (s.estimateMinutes) setEstimate(s.estimateMinutes)
-      if (s.priority) setPriority(s.priority)
-      if (s.dueDate) setDue(s.dueDate)
-      if (s.plannedDate) setPlanned(s.plannedDate)
-      if (s.note) setNote(s.note)
-      setMore(!!(s.dueDate || s.plannedDate || s.note))
-      setRelated(s.related ?? null)
-      setRelatedOn(true)
-      setAi({ status: 'done', message: s.reasoning ?? undefined })
-      setStep('form')
-    } catch (err) {
-      if (err instanceof NoAiKey) setAi({ status: 'error', message: t('clarify.ai.noKey') })
-      else setAi({ status: 'error', message: t('clarify.ai.error', { message: aiErrorText(err, t) }) })
-    }
+    if (proposed) return open(proposed)
+    request(item, true)
+    setAwaiting(key)
   }
+  useEffect(() => {
+    if (awaiting && awaiting === key && step === 'kind' && proposed) open(proposed)
+  }, [awaiting, key, step, proposed]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keyboard: 1–5 choose, 6 trash, a auto (step 1); Escape goes back (step 2).
+  // Keyboard: 1–5 choose, 6 trash, a auto, Enter takes the proposal (step 1); Escape goes back (step 2).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
@@ -175,7 +226,9 @@ export default function ClarifyPage() {
       const n = Number(e.key)
       if (n >= 1 && n <= 5) choose(TILES[n - 1])
       else if (e.key === '6') choose('trash')
-      else if (e.key === 'a') void runAuto()
+      else if (e.key === 'a') runAuto()
+      // a focused button handles Enter itself
+      else if (e.key === 'Enter' && proposed && el.tagName !== 'BUTTON' && el.tagName !== 'A') open(proposed)
       else return
       // The chosen form autofocuses an input; stop the key from being typed into it.
       e.preventDefault()
@@ -194,9 +247,10 @@ export default function ClarifyPage() {
     )
   }
 
-  const save = () => {
+  /** withRelated: also do what the AI linked (tick the task off, or only add the note to it). */
+  const save = (withRelated = true) => {
     if (!item) return
-    if (asNote) {
+    if (asNote && withRelated) {
       store.addTaskNote(related.taskId, item.text)
       finish()
       return
@@ -252,7 +306,7 @@ export default function ClarifyPage() {
       case 'trash':
         break
     }
-    if (related?.relation === 'completes' && relatedOn) store.completeTask(related.taskId, true)
+    if (withRelated && related?.relation === 'completes') store.completeTask(related.taskId, true)
     finish()
   }
 
@@ -335,29 +389,58 @@ export default function ClarifyPage() {
             rows={Math.min(8, Math.max(2, item.text.split('\n').length))}
             className="field-bare -mx-2 w-full resize-none px-2 py-1 text-[18px] leading-relaxed md:text-[21px]"
           />
+          {autoClarify && (
+            // one reserved line, so nothing jumps when the answer arrives
+            <p className="mt-3 flex min-h-[20px] items-start gap-1.5 text-[13px] leading-snug text-ink-3">
+              <Sparkles size={13} className="mt-[3px] shrink-0 text-accent" />
+              <span className={cx(proposal?.status === 'done' && 'text-ink-2')}>
+                {proposal?.status === 'done'
+                  ? t('clarify.ai.proposal', {
+                      summary: [
+                        t(`clarify.kinds.${AI_KINDS[proposal.s.kind]}`),
+                        proposed !== 'trash' && proposal.s.title && `„${proposal.s.title}“`,
+                        proposed === 'project' ? proposal.s.newProjectName && proposal.s.newProjectName !== proposal.s.title && proposal.s.newProjectName : proposal.s.projectName,
+                      ]
+                        .filter(Boolean)
+                        .join(' · '),
+                    })
+                  : proposal?.status === 'error'
+                    ? proposal.message
+                    : t('clarify.ai.thinking')}
+              </span>
+            </p>
+          )}
 
           <div className="mt-8 mb-3 flex items-center justify-between">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-3">{t('clarify.question')}</span>
-            <span className="hidden text-[11px] text-ink-3 md:inline">{t('clarify.keys')}</span>
+            <span className="hidden text-[11px] text-ink-3 md:inline">{proposed ? t('clarify.keysProposal') : t('clarify.keys')}</span>
           </div>
           <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
             {TILES.map((k, i) => (
-              <Tile key={k} label={t(`clarify.kinds.${k}`)} hint={t(`clarify.kinds.${k}Hint`)} shortcut={String(i + 1)} onClick={() => choose(k)} />
+              <Tile key={k} label={t(`clarify.kinds.${k}`)} hint={t(`clarify.kinds.${k}Hint`)} shortcut={String(i + 1)} proposed={k === proposed} onClick={() => choose(k)} />
             ))}
             <Tile
               label={t('clarify.kinds.auto')}
-              hint={ai.status === 'loading' ? t('clarify.ai.thinking') : t('clarify.kinds.autoHint')}
+              hint={
+                proposal?.status === 'loading'
+                  ? t('clarify.ai.thinking')
+                  : proposed
+                    ? t('clarify.ai.accept')
+                    : proposal?.status === 'error' && autoClarify
+                      ? t('clarify.ai.retry')
+                      : t('clarify.kinds.autoHint')
+              }
               shortcut="a"
               icon={<Sparkles size={14} className="text-accent" />}
               accent
-              disabled={ai.status === 'loading'}
-              onClick={() => void runAuto()}
+              disabled={proposal?.status === 'loading' && awaiting === key}
+              onClick={runAuto}
             />
           </div>
-          {ai.status === 'error' && <p className="fade-in mt-3 text-[12px] text-rose">{ai.message}</p>}
+          {!autoClarify && awaiting === key && proposal?.status === 'error' && <p className="fade-in mt-3 text-[12px] text-rose">{proposal.message}</p>}
 
           <div className="mt-6 flex items-center justify-between border-t border-line pt-4">
-            <Button variant="ghost" onClick={() => choose('trash')} className="text-ink-3 hover:text-rose">
+            <Button variant="ghost" onClick={() => choose('trash')} className={cx('hover:text-rose', proposed === 'trash' ? 'text-rose' : 'text-ink-3')}>
               <Trash2 size={14} /> {t('clarify.kinds.trash')} <span className="ml-1 hidden text-[11px] text-ink-3 md:inline">6</span>
             </Button>
             <Button variant="ghost" onClick={skip}>
@@ -373,14 +456,10 @@ export default function ClarifyPage() {
             </button>
             <span className="text-ink-3">·</span>
             <span className="text-[13px] font-medium">{ai.status === 'done' ? t('clarify.aiSuggests', { kind: t(`clarify.kinds.${kind}`) }) : t(`clarify.kinds.${kind}`)}</span>
-            {ai.status === 'done' && ai.message && <span className="truncate text-[12px] text-ink-3">— {ai.message}</span>}
           </div>
+          {ai.status === 'done' && ai.message && <p className="mt-2 text-[12px] leading-relaxed text-ink-3">{ai.message}</p>}
           <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{item.text}</p>
-          {related && (
-            <label className="fade-in mt-4 flex items-center gap-2 text-[13px] text-ink">
-              <Checkbox checked={relatedOn} onChange={setRelatedOn} /> {t(`clarify.related.${related.relation}`, { title: related.title })}
-            </label>
-          )}
+          {related && <p className="fade-in mt-4 text-[13px] text-ink">{t(`clarify.related.${related.relation}`, { title: related.title })}</p>}
 
           <form
             onSubmit={(e) => {
@@ -516,13 +595,30 @@ export default function ClarifyPage() {
             )}
             {formError && <p className="text-[12px] text-rose">{formError}</p>}
 
-            <div className="mt-2 flex items-center justify-between border-t border-line pt-4">
-              <Button variant="ghost" onClick={() => setStep('kind')}>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-y-2 border-t border-line pt-4">
+              {/* on phones the header's "← Back" is enough; the row keeps room for the two actions */}
+              <Button variant="ghost" onClick={() => setStep('kind')} className="max-sm:hidden">
                 {t('clarify.back')}
               </Button>
-              <Button variant="primary" type="submit">
-                {kind === 'trash' ? t('clarify.confirmTrash') : t('clarify.form.save')}
-              </Button>
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+                {related && (
+                  // declines the link: saves without touching the other task, or (duplicate) shows the form for a new item
+                  <Button variant="ghost" onClick={() => (asNote ? setRelated(null) : save(false))}>
+                    {asNote ? t('clarify.related.createAnyway') : kind === 'trash' ? t('clarify.related.justTrash') : t('clarify.related.justSave')}
+                  </Button>
+                )}
+                <Button variant="primary" type="submit">
+                  {asNote
+                    ? t('clarify.related.addNote')
+                    : related
+                      ? kind === 'trash'
+                        ? t('clarify.related.tickAndNext')
+                        : t('clarify.related.tickAndSave')
+                      : kind === 'trash'
+                        ? t('clarify.confirmTrash')
+                        : t('clarify.form.save')}
+                </Button>
+              </div>
             </div>
           </form>
         </div>
@@ -538,6 +634,7 @@ function Tile({
   onClick,
   icon,
   accent,
+  proposed,
   disabled,
 }: {
   label: string
@@ -546,6 +643,8 @@ function Tile({
   onClick: () => void
   icon?: React.ReactNode
   accent?: boolean
+  /** The AI's proposal: marked, Enter takes it. */
+  proposed?: boolean
   disabled?: boolean
 }) {
   return (
@@ -555,7 +654,11 @@ function Tile({
       disabled={disabled}
       className={cx(
         'flex min-h-[84px] flex-col items-start rounded-xl border px-4 py-3 text-left transition-colors disabled:opacity-50',
-        accent ? 'border-accent/40 bg-accent-soft/40 hover:bg-accent-soft' : 'border-line bg-surface hover:border-line-2 hover:bg-surface-2',
+        accent
+          ? 'border-accent/40 bg-accent-soft/40 hover:bg-accent-soft'
+          : proposed
+            ? 'border-accent bg-surface ring-1 ring-accent hover:bg-surface-2'
+            : 'border-line bg-surface hover:border-line-2 hover:bg-surface-2',
       )}
     >
       <span className="flex w-full items-center justify-between text-[15px] font-medium">
