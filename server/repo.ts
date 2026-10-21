@@ -84,6 +84,18 @@ export class Repo {
     return getMeta(this.db, 'changed_at') ?? null
   }
 
+  /**
+   * Marks a write (inside its transaction). The stamp always moves forward, even within the same
+   * millisecond, so a client can tell from the previous one whether anybody else wrote in between.
+   */
+  private touch(now: string): string | null {
+    const previous = getMeta(this.db, 'changed_at') ?? null
+    const stamp = previous && now <= previous ? new Date(Date.parse(previous) + 1).toISOString() : now
+    setMeta(this.db, 'initialized', '1')
+    setMeta(this.db, 'changed_at', stamp)
+    return previous
+  }
+
   loadState(): Snapshot {
     const read = (col: Collection): Record_[] =>
       (this.db.prepare(`SELECT data FROM ${TABLE[col]}`).all() as { data: string }[]).map((r) => JSON.parse(r.data) as Record_)
@@ -100,10 +112,12 @@ export class Repo {
     }
   }
 
-  applyChanges(changes: Changes): { upserted: number; deleted: number } {
+  /** previousChangedAt: the stamp this write replaced (see touch). */
+  applyChanges(changes: Changes): { upserted: number; deleted: number; previousChangedAt: string | null } {
     const now = new Date().toISOString()
     let upserted = 0
     let deleted = 0
+    let previousChangedAt: string | null = null
     transaction(this.db, () => {
       for (const col of COLLECTIONS) {
         const ups = changes.upserts?.[col] ?? []
@@ -123,10 +137,9 @@ export class Repo {
         }
       }
       if (changes.settings) this.saveSettings(changes.settings)
-      setMeta(this.db, 'initialized', '1')
-      setMeta(this.db, 'changed_at', now)
+      previousChangedAt = this.touch(now)
     })
-    return { upserted, deleted }
+    return { upserted, deleted, previousChangedAt }
   }
 
   /** Replaces everything with the snapshot (migrated to the current schema first). */
@@ -140,8 +153,7 @@ export class Repo {
         for (const r of (snap[col] ?? []) as Record_[]) stmt.run(r.id, JSON.stringify(r), now)
       }
       if (snap.settings) this.saveSettings(snap.settings as Settings)
-      setMeta(this.db, 'initialized', '1')
-      setMeta(this.db, 'changed_at', now)
+      this.touch(now)
     })
   }
 
@@ -168,8 +180,7 @@ export class Repo {
       const keep = new Set(events.map((e) => e.id))
       const del = this.db.prepare(`DELETE FROM events WHERE id = ?`)
       for (const e of previous) if (!keep.has(e.id)) del.run(e.id)
-      setMeta(this.db, 'initialized', '1')
-      setMeta(this.db, 'changed_at', now)
+      this.touch(now)
     })
     return result
   }

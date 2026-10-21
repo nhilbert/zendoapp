@@ -21,6 +21,15 @@ describe('Repo', () => {
     expect(s.settings).toEqual({ locale: 'de' })
     expect(repo.changedAt()).toBeTruthy()
   })
+  it('reports the stamp each write replaced, always moving forward', () => {
+    const repo = fresh()
+    const first = repo.applyChanges({ upserts: { inbox: [{ id: 'a', text: 'a' }] } })
+    expect(first.previousChangedAt).toBeNull()
+    const stamp1 = repo.changedAt()!
+    const second = repo.applyChanges({ upserts: { inbox: [{ id: 'b', text: 'b' }] } })
+    expect(second.previousChangedAt).toBe(stamp1)
+    expect(repo.changedAt()! > stamp1).toBe(true) // also within the same millisecond
+  })
   it('replaceAll migrates old snapshots', () => {
     const repo = fresh()
     repo.applyChanges({ upserts: { inbox: [{ id: 'old', text: 'gone' }] } })

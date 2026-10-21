@@ -10,7 +10,10 @@ import { NotConfigured, ServiceUnavailable, SignInRequired, api } from './api'
  *    data (browser cache, sample or prototype data) is pushed as the initial state.
  *  - Afterwards every store change is diffed per collection and sent as
  *    upserts/deletes, debounced and merged, with retries while offline.
- *  - On window focus the state is refreshed when the server reports a change.
+ *  - On window focus the state is refreshed when the server reports a change. Each send also says
+ *    which stamp it replaced on the server: when that is not the state this browser holds, somebody
+ *    else wrote in between (an agent, the calendar job, another device) and the state is pulled.
+ *  - Pulled state never hides unconfirmed changes: they stay on top until the server has them.
  * The browser cache (zustand persist) stays as an offline fallback.
  */
 export const COLLECTIONS = ['inbox', 'projects', 'tasks', 'events', 'blocks', 'reviews'] as const
@@ -135,6 +138,8 @@ export const FLAG_FRESH = 'zendo.fresh'
 export const PRE_SYNC_BACKUP = 'zendo.pre-sync-backup'
 /** Changes the server has not confirmed yet (offline, expired sign-in); kept across reloads and sent first on start. */
 export const PENDING_CHANGES = 'zendo.pending-changes'
+/** Set while an imported snapshot still has to replace the server's data; survives a reload. */
+export const FULL_PUSH = 'zendo.full-push'
 
 const storage = {
   get: (k: string) => {
@@ -162,6 +167,35 @@ const storage = {
 
 const counts = (s: { projects: unknown[]; tasks: unknown[]; inbox: unknown[] }): Counts => ({ projects: s.projects.length, tasks: s.tasks.length, inbox: s.inbox.length })
 
+/** JSON with sorted keys, so the same record compares equal however its keys were ordered. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    return `{${Object.keys(obj)
+      .filter((k) => obj[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+/** Do both hold the same records with the same content? Calendar events are left out: the server re-imports them. */
+export function sameContent(a: Collections, b: Collections): boolean {
+  const key = (xs: Identified[]) => canonical([...xs].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)))
+  return (['projects', 'tasks', 'inbox', 'blocks', 'reviews'] as const).every((c) => key(a[c]) === key(b[c]))
+}
+
+/** The server's records with the unconfirmed changes on top (upserts replace or add, deletes remove). */
+export function overlay<T extends Identified>(records: T[], upserts: Map<string, Identified> | undefined, deletes: Set<string> | undefined): T[] {
+  if (!upserts?.size && !deletes?.size) return records
+  const out = records.filter((r) => !deletes?.has(r.id)).map((r) => (upserts?.get(r.id) as T | undefined) ?? r)
+  const known = new Set(records.map((r) => r.id))
+  for (const [id, r] of upserts ?? []) if (!known.has(id)) out.push(r as T)
+  return out
+}
+
 let resolver: ((choice: 'browser' | 'server') => Promise<void>) | null = null
 /** Called by the conflict dialog. */
 export const resolveConflict = (choice: 'browser' | 'server'): Promise<void> => resolver?.(choice) ?? Promise.resolve()
@@ -173,11 +207,16 @@ export const refreshNow = (): Promise<void> => refresher?.() ?? Promise.resolve(
 export function startSync(): () => void {
   const sync = useSync.getState().set
   let applying = false // true while server state is written into the store (no echo back)
-  let needsFullPush = false
-  let flushing = false
+  let needsFullPush = !!storage.get(FULL_PUSH)
+  let flushRun: Promise<void> | null = null // the send in progress
+  let ready = false // the first-contact decision is made; until then nothing is sent
   let timer: number | undefined
   let retries = 0
-  let lastChangedAt: string | null = null
+  let lastChangedAt: string | null = null // the server stamp of the state this browser holds
+  let pullWanted = false // somebody else wrote since: pull once the own changes are out
+  let refreshRun: Promise<void> | null = null // the pull in progress
+  let pullAgain = false // asked for while a pull ran: its state may predate the reason
+  let writes = 0 // confirmed sends; a pull that overlaps one is discarded
   let stopped = false
   const queue = newQueue()
   let inflight: Changes | null = null // taken from the queue, sent, not yet confirmed
@@ -217,17 +256,23 @@ export function startSync(): () => void {
   }
 
   const applyServerState = (s: ServerState) => {
+    // Unconfirmed changes (in flight or queued) are not in the server's state yet: keep them on top.
+    const mine = newQueue()
+    if (inflight) addToQueue(mine, inflight)
+    const rest = queueToChanges(queue)
+    if (rest) addToQueue(mine, rest)
+    const top = <T extends Identified>(c: Col, records: T[]) => overlay(records, mine.upserts.get(c), mine.deletes.get(c))
     applying = true
     try {
       const current = useStore.getState()
       useStore.setState({
-        inbox: s.inbox,
-        projects: s.projects,
-        tasks: s.tasks,
-        events: s.events,
-        blocks: s.blocks,
-        reviews: s.reviews,
-        settings: s.settings ?? current.settings,
+        inbox: top('inbox', s.inbox),
+        projects: top('projects', s.projects),
+        tasks: top('tasks', s.tasks),
+        events: top('events', s.events),
+        blocks: top('blocks', s.blocks),
+        reviews: top('reviews', s.reviews),
+        settings: mine.settings ?? s.settings ?? current.settings,
         seeded: true,
       })
     } finally {
@@ -258,21 +303,41 @@ export function startSync(): () => void {
     timer = window.setTimeout(() => void flush(), wait)
   }
 
-  const flush = async (): Promise<void> => {
-    if (stopped || flushing) return
-    flushing = true
+  /** Replaces the server's data with this browser's. Edits made while it uploads stay queued for afterwards. */
+  const pushSnapshot = async () => {
+    const snap = snapshot()
+    clearQueue() // everything queued so far is in the snapshot
+    const r = await api<{ changedAt: string }>('/api/state', { method: 'PUT', body: JSON.stringify(snap) })
+    lastChangedAt = r.changedAt
+    writes += 1
+    needsFullPush = false
+    storage.remove(FULL_PUSH)
+  }
+
+  /** One send at a time; a call while one runs joins it (anything queued meanwhile follows in its finally). */
+  const flush = (): Promise<void> => {
+    if (stopped || !ready) return Promise.resolve()
+    flushRun ??= sendAll().finally(() => {
+      flushRun = null
+      if (stopped) return
+      if ((queued() || needsFullPush) && retries === 0) schedule()
+      else if (pullWanted && !refreshRun && !queued() && !needsFullPush) void refresh()
+    })
+    return flushRun
+  }
+
+  const sendAll = async (): Promise<void> => {
     try {
-      if (needsFullPush) {
-        await api('/api/state', { method: 'PUT', body: JSON.stringify(snapshot()) })
-        needsFullPush = false
-        clearQueue()
-      }
+      if (needsFullPush) await pushSnapshot()
       const ch = takeQueue()
       if (ch) {
         inflight = ch
         try {
-          const r = await api<{ changedAt: string }>('/api/changes', { method: 'POST', body: JSON.stringify(ch) })
-          lastChangedAt = r.changedAt
+          const r = await api<{ changedAt: string; previousChangedAt?: string | null }>('/api/changes', { method: 'POST', body: JSON.stringify(ch) })
+          // Only this send since the state we hold: still up to date. Otherwise pull what the others wrote.
+          if (r.previousChangedAt === lastChangedAt) lastChangedAt = r.changedAt
+          else pullWanted = true
+          writes += 1
           inflight = null
           persistPending()
         } catch (err) {
@@ -289,9 +354,6 @@ export function startSync(): () => void {
       sync({ status: 'online', lastSync: new Date().toISOString(), pending: 0, message: undefined })
     } catch (err) {
       fail(err)
-    } finally {
-      flushing = false
-      if (!stopped && queued() && retries === 0) schedule()
     }
   }
 
@@ -308,16 +370,6 @@ export function startSync(): () => void {
     if (storage.get(FLAG_FRESH)) return false
     return !looksLikeSample(s.projects)
   }
-  const sameIds = (server: ServerState): boolean => {
-    const s = useStore.getState()
-    const ids = (xs: Identified[]) => xs.map((x) => x.id).sort().join(',')
-    return ids(s.projects) === ids(server.projects) && ids(s.tasks) === ids(server.tasks) && ids(s.inbox) === ids(server.inbox)
-  }
-  const pushLocal = async () => {
-    await api('/api/state', { method: 'PUT', body: JSON.stringify(snapshot()) })
-    clearQueue()
-    needsFullPush = false
-  }
   const agreed = () => {
     storage.set(FLAG_SYNCED, '1')
     storage.remove(FLAG_FRESH)
@@ -331,21 +383,28 @@ export function startSync(): () => void {
   const handshake = async (): Promise<void> => {
     try {
       const server = await api<ServerState>('/api/state', { timeoutMs: 5000 })
+      const firstContact = !storage.get(FLAG_SYNCED) && localHasOwnData()
+      // Whatever is decided, this browser's data is kept once before the first sync.
+      if (firstContact && !storage.get(PRE_SYNC_BACKUP)) storage.set(PRE_SYNC_BACKUP, JSON.stringify(snapshot()))
       if (server.initialized) {
-        if (!storage.get(FLAG_SYNCED) && localHasOwnData() && !sameIds(server)) {
-          if (!storage.get(PRE_SYNC_BACKUP)) storage.set(PRE_SYNC_BACKUP, JSON.stringify(snapshot()))
+        if (firstContact && !sameContent(useStore.getState(), server)) {
           resolver = async (choice) => {
             resolver = null
             try {
-              if (choice === 'browser') await pushLocal()
+              ready = true
+              if (choice === 'browser') await pushSnapshot()
               else {
+                // the user chose the server's data; this browser's unsent changes and import are dropped
+                clearQueue()
+                needsFullPush = false
+                storage.remove(FULL_PUSH)
                 applyServerState(await api<ServerState>('/api/state'))
-                clearQueue() // the user chose the server's data; this browser's unsent changes are dropped
               }
               agreed()
               retries = 0
               sync({ status: 'online', lastSync: new Date().toISOString(), pending: 0, message: undefined, conflict: undefined })
             } catch (err) {
+              ready = false
               sync({ status: 'local', conflict: undefined, message: err instanceof Error ? err.message : String(err) })
               timer = window.setTimeout(() => void handshake(), 15000)
             }
@@ -354,6 +413,7 @@ export function startSync(): () => void {
           return
         }
         // Unsent changes (e.g. from before a reload) go out first; then the server state, which now includes them.
+        ready = true
         const hadPending = queued() > 0 || needsFullPush
         if (hadPending) {
           await flush()
@@ -361,23 +421,54 @@ export function startSync(): () => void {
         }
         applyServerState(hadPending ? await api<ServerState>('/api/state') : server)
       } else {
-        await pushLocal()
+        ready = true
+        await pushSnapshot()
       }
       agreed()
       retries = 0
+      pullWanted = false
       sync({ status: 'online', lastSync: new Date().toISOString(), pending: queued(), message: undefined })
+      if (queued() || needsFullPush) schedule() // edits made during the handshake
     } catch (err) {
+      ready = false
       sync({ status: err instanceof SignInRequired ? 'signin' : 'local', message: err instanceof Error ? err.message : String(err) })
       window.clearTimeout(timer)
       timer = window.setTimeout(() => void handshake(), 15000)
     }
   }
 
-  const refresh = async (): Promise<void> => {
-    if (useSync.getState().status !== 'online' || queued() || flushing) return
+  /** Pull the server state if it changed: own changes go out first, so the pulled state includes them. */
+  const refresh = (): Promise<void> => {
+    if (refreshRun) {
+      pullAgain = true
+      return refreshRun
+    }
+    refreshRun = pull().finally(() => (refreshRun = null))
+    return refreshRun
+  }
+
+  const pull = async (): Promise<void> => {
+    pullAgain = false
     try {
-      const server = await api<ServerState>('/api/state', { timeoutMs: 5000 })
-      if (server.initialized && server.changedAt !== lastChangedAt) applyServerState(server)
+      for (let attempt = 0; attempt < 5; attempt++) {
+        if (stopped || useSync.getState().status !== 'online') return
+        if (flushRun || queued() || needsFullPush) {
+          pullWanted = true
+          await flush()
+          continue
+        }
+        const before = writes
+        pullWanted = false
+        const server = await api<ServerState>('/api/state', { timeoutMs: 5000 })
+        // A send confirmed meanwhile is not in this state, and an import must not be replaced by it: ask again.
+        if (writes !== before || flushRun || needsFullPush) {
+          pullWanted = true
+          continue
+        }
+        if (server.initialized && server.changedAt !== lastChangedAt) applyServerState(server)
+        if (!pullAgain) return
+        pullAgain = false
+      }
     } catch (err) {
       // An expired sign-in is shown right away (before the next edit); other problems surface with the next change.
       if (err instanceof SignInRequired) {
@@ -409,6 +500,7 @@ export function startSync(): () => void {
         applying = false
       }
       needsFullPush = true
+      storage.set(FULL_PUSH, '1')
       void flush()
     },
   })
