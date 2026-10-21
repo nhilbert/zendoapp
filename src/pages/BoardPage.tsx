@@ -12,7 +12,7 @@ import {
   useDroppable,
 } from '@dnd-kit/core'
 import { ArrowDownNarrowWide, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
-import type { Task, TaskStatus } from '@/domain/types'
+import type { ProjectColor, Task, TaskStatus } from '@/domain/types'
 import { TASK_STATUSES } from '@/domain/types'
 import { sortTasks } from '@/domain/selectors'
 import { useStore } from '@/store/useStore'
@@ -60,6 +60,8 @@ export default function BoardPage() {
   const asList = isPhone && view === 'list'
   // In the phone list, "someday" and "done" start folded so the day's work stays on top.
   const [unfolded, setUnfolded] = useState<TaskStatus[]>([])
+  const [picking, setPicking] = useState(false)
+  const pickerButton = useRef<HTMLButtonElement>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [indicator, setIndicator] = useState<Indicator>(null)
   const indicatorRef = useRef<Indicator>(null)
@@ -141,20 +143,44 @@ export default function BoardPage() {
             <IconButton label={t('board.prev')} onClick={() => step(-1)}>
               <ChevronLeft size={16} />
             </IconButton>
-            {/* the name opens the native picker to jump directly (works with touch and keyboard) */}
-            <label className="relative flex min-w-0 max-w-[62vw] cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-2 md:max-w-[340px]" title={t('board.pick')}>
-              {scopeProject && <ProjectDot color={scopeProject.color} />}
-              <span className="truncate text-[15px] font-medium">{scopeName}</span>
-              <select className="absolute inset-0 cursor-pointer opacity-0" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t('board.pick')}>
-                <option value={CHORES}>{t('board.chores')}</option>
-                {scopes.slice(1).map((id) => (
-                  <option key={id} value={id}>
-                    {projects.find((p) => p.id === id)?.name}
-                  </option>
-                ))}
-                <option value="">{t('board.all')}</option>
-              </select>
-            </label>
+            {/* the name opens a short list with the project colours to jump directly */}
+            <div className="relative min-w-0">
+              <button
+                ref={pickerButton}
+                type="button"
+                onClick={() => setPicking((v) => !v)}
+                aria-haspopup="listbox"
+                aria-expanded={picking}
+                title={t('board.pick')}
+                className="flex min-w-0 max-w-[62vw] items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-2 md:max-w-[340px]"
+              >
+                {filter !== '' && <ProjectDot color={scopeProject?.color ?? null} />}
+                <span className="truncate text-[15px] font-medium">{scopeName}</span>
+              </button>
+              {picking && (
+                <ScopeMenu
+                  items={[
+                    { id: CHORES, name: t('board.chores'), color: null },
+                    ...scopes.slice(1).map((id) => {
+                      const p = projects.find((x) => x.id === id)
+                      return { id, name: p?.name ?? '', color: p?.color ?? null }
+                    }),
+                    { id: '', name: t('board.all') },
+                  ]}
+                  value={filter}
+                  label={t('board.pick')}
+                  onPick={(id) => {
+                    setFilter(id)
+                    setPicking(false)
+                    pickerButton.current?.focus()
+                  }}
+                  onClose={() => {
+                    setPicking(false)
+                    pickerButton.current?.focus()
+                  }}
+                />
+              )}
+            </div>
             <IconButton label={t('board.next')} onClick={() => step(1)}>
               <ChevronRight size={16} />
             </IconButton>
@@ -239,6 +265,72 @@ export default function BoardPage() {
         <DragOverlay dropAnimation={null}>{activeTask ? <Card task={activeTask} hideProject={filter !== ''} dragging /> : null}</DragOverlay>
       </DndContext>
     </div>
+  )
+}
+
+/**
+ * The list behind the project name: like a native picker (arrow keys, Enter, Escape, click outside),
+ * but with the project colours, which a native select cannot show. color null = chores (neutral dot);
+ * no color = "all projects" (no dot).
+ */
+function ScopeMenu({
+  items,
+  value,
+  label,
+  onPick,
+  onClose,
+}: {
+  items: { id: string; name: string; color?: ProjectColor | null }[]
+  value: string
+  label: string
+  onPick: (id: string) => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLUListElement>(null)
+  const [active, setActive] = useState(() => Math.max(0, items.findIndex((i) => i.id === value)))
+  useEffect(() => ref.current?.focus(), [])
+  useEffect(() => {
+    ref.current?.children[active]?.scrollIntoView({ block: 'nearest' })
+  }, [active])
+  useEffect(() => {
+    // the toggle button sits next to the list, so it counts as inside
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.parentElement?.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [onClose])
+  return (
+    <ul
+      ref={ref}
+      role="listbox"
+      aria-label={label}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowDown') setActive((a) => Math.min(items.length - 1, a + 1))
+        else if (e.key === 'ArrowUp') setActive((a) => Math.max(0, a - 1))
+        else if (e.key === 'Enter') onPick(items[active].id)
+        else if (e.key === 'Escape') onClose()
+        else return
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      className="card fade-in absolute left-0 top-full z-30 mt-1 max-h-[60vh] w-72 max-w-[85vw] md:w-96 overflow-y-auto p-1 shadow-[var(--shadow)] outline-none md:left-auto md:right-0"
+    >
+      {items.map((item, i) => (
+        <li
+          key={item.id || 'all'}
+          role="option"
+          aria-selected={item.id === value}
+          onPointerEnter={() => setActive(i)}
+          onClick={() => onPick(item.id)}
+          className={cx('flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[14px]', i === active && 'bg-surface-2', item.id === value ? 'font-medium text-ink' : 'text-ink-2')}
+        >
+          {item.color !== undefined ? <ProjectDot color={item.color} /> : <span className="w-2 shrink-0" />}
+          <span className="truncate">{item.name}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
