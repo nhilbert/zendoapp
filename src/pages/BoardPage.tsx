@@ -19,27 +19,10 @@ import { useStore } from '@/store/useStore'
 import { useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, useDndSensors } from '@/components/dnd'
-import { IconButton, PageHeader, Segmented, cx, isTyping, useIsPhone } from '@/components/ui'
+import { IconButton, PageHeader, Segmented, cx, isTyping, useIsPhone, useLocalState } from '@/components/ui'
 import { ProjectDot, TaskMeta, projectVars, useProjectMap } from '@/components/TaskBits'
 
 const CHORES = '__chores__'
-/** Per device: the board opens where it was left (first time: chores), and on phones as a list. */
-const SCOPE_KEY = 'zendo.board.scope'
-const VIEW_KEY = 'zendo.board.view'
-const readLocal = (key: string) => {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-const writeLocal = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // private window or blocked storage: the choice just isn't remembered
-  }
-}
 type Indicator = { cardId: string; position: 'before' | 'after' } | null
 
 /** Prefer the card under the pointer (for positional drops), then the column, then any overlap. */
@@ -65,21 +48,15 @@ export default function BoardPage() {
   const isPhone = useIsPhone()
   // One project at a time: chores, then the active and planned projects; "all" only through the picker.
   const scopes = [CHORES, ...projects.filter((p) => p.status === 'active' || p.status === 'planned').map((p) => p.id)]
-  const [stored, setStored] = useState(() => readLocal(SCOPE_KEY) ?? CHORES)
+  // Per device: the board opens where it was left (first time: chores), and on phones as a list.
+  const [stored, setFilter] = useLocalState('zendo.board.scope', CHORES)
   const filter = stored === '' || scopes.includes(stored) ? stored : CHORES
-  const setFilter = (value: string) => {
-    setStored(value)
-    writeLocal(SCOPE_KEY, value)
-  }
   const step = (delta: 1 | -1) => {
     const i = scopes.indexOf(filter)
     setFilter(scopes[i < 0 ? (delta > 0 ? 0 : scopes.length - 1) : (i + delta + scopes.length) % scopes.length])
   }
-  const [view, setViewState] = useState<'list' | 'board'>(() => (readLocal(VIEW_KEY) === 'board' ? 'board' : 'list'))
-  const setView = (v: 'list' | 'board') => {
-    setViewState(v)
-    writeLocal(VIEW_KEY, v)
-  }
+  const [storedView, setView] = useLocalState('zendo.board.view', 'list')
+  const view = storedView === 'board' ? 'board' : 'list'
   const asList = isPhone && view === 'list'
   // In the phone list, "someday" and "done" start folded so the day's work stays on top.
   const [unfolded, setUnfolded] = useState<TaskStatus[]>([])

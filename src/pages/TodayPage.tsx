@@ -11,7 +11,7 @@ import { useStore } from '@/store/useStore'
 import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks } from '@/store/visible'
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, Swipeable, collision, useDndSensors } from '@/components/dnd'
-import { Button, Checkbox, Chip, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone } from '@/components/ui'
+import { Button, Checkbox, Chip, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone, useLocalState } from '@/components/ui'
 import { ProjectChip, ProjectDot, TaskMeta, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 import { JoinLink } from '@/components/JoinLink'
 import { joinUrlOf } from '@/domain/meeting'
@@ -38,6 +38,8 @@ export default function TodayPage() {
   const scheduleTask = useStore((s) => s.scheduleTask)
   const rescheduleTasks = useStore((s) => s.rescheduleTasks)
   const saveReview = useStore((s) => s.saveReview)
+  // Folded per device, so the plan isn't followed by work that isn't meant for today.
+  const [candidatesFolded, setCandidatesFolded] = useLocalState('zendo.today.candidatesFolded', '')
   const openTask = useUi((s) => s.openTask)
   const openEvent = useUi((s) => s.openEvent)
   const sensors = useDndSensors()
@@ -248,8 +250,13 @@ export default function TodayPage() {
 
             {/* dropping a planned task here takes it off the day */}
             <Droppable id="unplan" className="-mx-2 rounded-xl px-2 transition-colors" overClassName="bg-surface-2">
-              <SectionLabel>{t('today.candidates')}</SectionLabel>
-              <div className="flex flex-col gap-4">
+              <SectionLabel>
+                <button type="button" onClick={() => setCandidatesFolded(candidatesFolded ? '' : '1')} aria-expanded={!candidatesFolded} className="flex items-center gap-1 uppercase hover:text-ink">
+                  {t('today.candidates')}
+                  <span className="text-[11px]">{candidatesFolded ? '▸' : '▾'}</span>
+                </button>
+              </SectionLabel>
+              <div className={cx('flex flex-col gap-4', candidatesFolded && 'hidden')}>
                 <CandidateGroup label={t('today.overdue')} items={cands.overdue} tone="rose" date={date} />
                 <CandidateGroup label={t('today.dueToday')} items={cands.due} tone="amber" date={date} />
                 {cands.fromBlocks.length > 0 && (

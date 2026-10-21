@@ -114,6 +114,12 @@
   button {
     cursor: pointer;
   }
+  /* Native pick lists take the theme too, also for invisible selects laid over a label (Board, Week "+"). */
+  option,
+  optgroup {
+    background-color: var(--surface);
+    color: var(--ink);
+  }
   :focus-visible {
     outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
     outline-offset: 2px;

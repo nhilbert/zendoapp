@@ -232,6 +232,29 @@ export function Drawer({ open, onClose, children }: { open: boolean; onClose: ()
   )
 }
 
+/**
+ * A small per-device preference (open view, folded section) kept in localStorage. Storage can be
+ * missing or blocked (private window): the value then just isn't remembered.
+ */
+export function useLocalState(key: string, initial: string): [string, (value: string) => void] {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) ?? initial
+    } catch {
+      return initial
+    }
+  })
+  const set = (next: string) => {
+    setValue(next)
+    try {
+      localStorage.setItem(key, next)
+    } catch {
+      // not remembered
+    }
+  }
+  return [value, set]
+}
+
 /** True while the media query matches (e.g. useMediaQuery('(max-width: 767px)') for phones). */
 export function useMediaQuery(query: string): boolean {
   const get = () => typeof window !== 'undefined' && window.matchMedia(query).matches

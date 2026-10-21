@@ -146,6 +146,17 @@ describe('selector review regressions', () => {
     expect(c.chores).toEqual([])
   })
 
+  it('candidatesForDay does not offer a chore planned for a later day, but keeps its deadline', () => {
+    const tasks = [
+      task({ id: 'later', status: 'next', plannedDate: '2026-10-26' }),
+      task({ id: 'undated', status: 'next' }),
+      task({ id: 'laterButDue', status: 'next', plannedDate: '2026-10-26', dueDate: '2026-10-20' }),
+    ]
+    const c = candidatesForDay(DATE, tasks, [], [])
+    expect(c.chores.map((t) => t.id)).toEqual(['undated'])
+    expect(c.due.map((t) => t.id)).toEqual(['laterButDue'])
+  })
+
   it('#15 dayCapacity reports meeting cost per project, workshop minimum included', () => {
     const c = dayCapacity(DATE, settings, [ev({ id: 'w', kind: 'workshop', start: '09:00', end: '11:00', projectId: 'a' }), ev({ id: 'm', start: '14:00', end: '15:00' })], [], [])
     expect(c.meetingsByProject).toEqual([
