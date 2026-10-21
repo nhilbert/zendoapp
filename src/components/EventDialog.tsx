@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { compareProjects } from '@/domain/selectors'
 import type { Availability, CalendarEvent, EventKind } from '@/domain/types'
 import { AVAILABILITIES, EVENT_KINDS } from '@/domain/types'
 import { isHHMM, isISODate, todayISO } from '@/domain/dates'
@@ -123,6 +124,7 @@ export default function EventDialog() {
               <option value="">{t('common.none')}</option>
               {projects
                 .filter((p) => p.status === 'active' || p.status === 'planned' || p.id === draft.projectId)
+                .sort(compareProjects)
                 .map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}

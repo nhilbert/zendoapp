@@ -66,6 +66,8 @@ export interface Project {
   private?: boolean
   /** Outlook series linked as a whole (CAL-10): new occurrences of these series get this project on sync. */
   meetingSeries?: string[]
+  /** Place in the user's own order (dragged on the projects page); without one, due date and name decide. */
+  order?: number
   createdAt: ISODateTime
   updatedAt: ISODateTime
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { compareProjects } from '@/domain/selectors'
 import { Trash2, X } from 'lucide-react'
 import type { Priority, Recurrence, TaskStatus } from '@/domain/types'
 import { RECURRENCES, TASK_STATUSES } from '@/domain/types'
@@ -66,6 +67,7 @@ export default function TaskDrawer() {
             <option value="">{t('task.chore')}</option>
             {projects
               .filter((p) => p.status === 'active' || p.status === 'planned' || p.id === task.projectId)
+              .sort(compareProjects)
               .map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}

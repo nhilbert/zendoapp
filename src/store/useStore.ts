@@ -21,7 +21,7 @@ import { STORE_VERSION, migratePersisted } from '@/domain/migrations'
 import { mergeImportedEvents } from '@/domain/eventMerge'
 
 export { STORE_VERSION, migratePersisted }
-import { urgencyComparator } from '@/domain/selectors'
+import { compareProjects, projectGroup, urgencyComparator } from '@/domain/selectors'
 
 const now = () => new Date().toISOString()
 const uid = () => crypto.randomUUID()
@@ -58,6 +58,8 @@ interface State {
   addProject: (input: Partial<Project> & { name: string }) => Project
   updateProject: (id: string, patch: Partial<Project>) => void
   deleteProject: (id: string) => void
+  /** Move a project within its section of the projects list: before the given project, or to the end (beforeId null). */
+  reorderProject: (id: string, beforeId: string | null) => void
 
   // tasks
   addTask: (input: Partial<Task> & { title: string }) => Task
@@ -148,6 +150,17 @@ export const useStore = create<State>()(
       },
       updateProject: (id, patch) =>
         set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: now() } : p)) })),
+      reorderProject: (id, beforeId) =>
+        set((s) => {
+          const target = s.projects.find((p) => p.id === id)
+          if (!target) return {}
+          // the whole section gets places, so projects never dragged keep where they were shown
+          const section = s.projects.filter((p) => p.id !== id && projectGroup(p) === projectGroup(target)).sort(compareProjects)
+          const at = beforeId ? section.findIndex((p) => p.id === beforeId) : -1
+          section.splice(at >= 0 ? at : section.length, 0, target)
+          const orders = new Map(section.map((p, i) => [p.id, (i + 1) * 1000]))
+          return { projects: s.projects.map((p) => (orders.has(p.id) && orders.get(p.id) !== p.order ? { ...p, order: orders.get(p.id)!, updatedAt: now() } : p)) }
+        }),
       deleteProject: (id) =>
         set((s) => ({
           projects: s.projects.filter((p) => p.id !== id),

@@ -22,6 +22,7 @@ import { addDaysISO, fmtWeekday, isHHMM, isISODate, isoWeekday, nowHHMM, rangeIS
 import {
   blocksOn,
   candidatesForDay,
+  compareProjects,
   dayCapacity,
   eventsOn,
   isOpen,
@@ -498,7 +499,10 @@ export class Ops {
   projectList(status?: ProjectStatus[]) {
     const d = this.read()
     const wanted = status?.length ? status : (['active', 'planned'] as ProjectStatus[])
-    return d.projects.filter((p) => wanted.includes(p.status)).map((p) => this.projectSummary(d, p))
+    return d.projects
+      .filter((p) => wanted.includes(p.status))
+      .sort(compareProjects)
+      .map((p) => this.projectSummary(d, p))
   }
 
   projectGet(ref: string) {

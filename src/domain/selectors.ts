@@ -47,6 +47,27 @@ export function workableProjects(projects: Project[]): Project[] {
   return projects.filter(isWorkable)
 }
 
+/** The sections projects are listed and ordered in: active, planned, the rest (someday and archived). */
+export const projectGroup = (p: Project): 0 | 1 | 2 => (p.status === 'active' ? 0 : p.status === 'planned' ? 1 : 2)
+
+/**
+ * The user's project order, used wherever projects are listed: by section, then the dragged order
+ * (projects never dragged come after), then due date, then name.
+ */
+export function compareProjects(a: Project, b: Project): number {
+  const group = projectGroup(a) - projectGroup(b)
+  if (group) return group
+  if (a.order !== undefined || b.order !== undefined) {
+    if (a.order === undefined) return 1
+    if (b.order === undefined) return -1
+    if (a.order !== b.order) return a.order - b.order
+  }
+  if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) return compareISO(a.dueDate, b.dueDate)
+  if (a.dueDate && !b.dueDate) return -1
+  if (b.dueDate && !a.dueDate) return 1
+  return a.name.localeCompare(b.name)
+}
+
 /** Active projects that violate the "exactly one next action" rule. */
 export function projectsWithoutNextAction(projects: Project[], tasks: Task[]): Project[] {
   return activeProjects(projects).filter((p) => !nextActionOf(tasks, p.id))

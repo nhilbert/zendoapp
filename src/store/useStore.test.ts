@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { migratePersisted, useStore } from './useStore'
+import { compareProjects } from '@/domain/selectors'
 import type { CalendarEvent } from '@/domain/types'
 import { addDaysISO, todayISO } from '@/domain/dates'
 
@@ -186,6 +187,27 @@ describe('undoing a completion, more', () => {
     s.reorderTask(c.id, 'todo', a.id) // c already sits before a
     const after = useStore.getState().tasks
     expect(after.find((t) => t.id === b.id)).toBe(before.find((t) => t.id === b.id))
+  })
+})
+
+describe('project order', () => {
+  const names = () => [...useStore.getState().projects].sort(compareProjects).map((p) => p.name)
+  it('keeps the due-date order until a project is dragged, then the dragged order, per section', () => {
+    const s = useStore.getState()
+    s.addProject({ name: 'B late', dueDate: '2026-12-01' })
+    s.addProject({ name: 'A soon', dueDate: '2026-11-01' })
+    s.addProject({ name: 'C none' })
+    const planned = s.addProject({ name: 'P planned', status: 'planned' })
+    expect(names()).toEqual(['A soon', 'B late', 'C none', 'P planned'])
+    const c = useStore.getState().projects.find((p) => p.name === 'C none')!
+    const a = useStore.getState().projects.find((p) => p.name === 'A soon')!
+    s.reorderProject(c.id, a.id)
+    expect(names()).toEqual(['C none', 'A soon', 'B late', 'P planned'])
+    s.reorderProject(c.id, null) // to the end of its section, still before the planned one
+    expect(names()).toEqual(['A soon', 'B late', 'C none', 'P planned'])
+    expect(useStore.getState().projects.find((p) => p.id === planned.id)!.order).toBeUndefined()
+    s.addProject({ name: 'D new' })
+    expect(names()).toEqual(['A soon', 'B late', 'C none', 'D new', 'P planned'])
   })
 })
 

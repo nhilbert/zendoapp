@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CalendarEvent, PlanBlock, Project, Task } from '@/domain/types'
-import { isWorkable, visibleBlocks } from '@/domain/selectors'
+import { compareProjects, isWorkable, visibleBlocks } from '@/domain/selectors'
 import { useStore } from './useStore'
 
 /**
@@ -17,13 +17,13 @@ export function useHidePrivate(): boolean {
   return useStore((s) => !!s.settings.hidePrivate)
 }
 
-/** Listed projects: not archived (unless asked for) and not private while hiding. */
+/** Listed projects in the user's order: not archived (unless asked for) and not private while hiding. */
 export function useVisibleProjects(opts: { includeArchived?: boolean } = {}): Project[] {
   const projects = useStore((s) => s.projects)
   const hide = useHidePrivate()
   const includeArchived = !!opts.includeArchived
   return useMemo(
-    () => projects.filter((p) => (includeArchived || p.status !== 'archived') && (!hide || !p.private)),
+    () => projects.filter((p) => (includeArchived || p.status !== 'archived') && (!hide || !p.private)).sort(compareProjects),
     [projects, hide, includeArchived],
   )
 }
