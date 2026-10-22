@@ -146,6 +146,17 @@ describe('selector review regressions', () => {
     expect(c.chores).toEqual([])
   })
 
+  it('candidatesForDay makes no placeholder for a chore block: its candidates are the chores themselves', () => {
+    const tasks = [task({ id: 'chore', status: 'next' }), task({ id: 'next', projectId: 'p', status: 'next' })]
+    const blocks: PlanBlock[] = [
+      { id: 'c', date: '2026-10-20', projectId: null, size: 0.5 },
+      { id: 'b', date: '2026-10-20', projectId: 'p', size: 0.5 },
+    ]
+    const c = candidatesForDay(DATE, tasks, blocks, [project({})])
+    expect(c.fromBlocks.map((b) => [b.project.id, b.task?.id])).toEqual([['p', 'next']])
+    expect(c.chores.map((t) => t.id)).toEqual(['chore'])
+  })
+
   it('candidatesForDay does not offer a chore planned for a later day, but keeps its deadline', () => {
     const tasks = [
       task({ id: 'later', status: 'next', plannedDate: '2026-10-26' }),

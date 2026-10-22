@@ -12,7 +12,7 @@ import { useVisibleBlocks, useVisibleEvents, useVisibleProjects, useVisibleTasks
 import { useUi } from '@/store/useUi'
 import { Draggable, Droppable, Swipeable, collision, useDndSensors } from '@/components/dnd'
 import { Button, Checkbox, Chip, IconButton, SectionLabel, Segmented, Textarea, cx, useIsPhone, useLocalState } from '@/components/ui'
-import { ProjectChip, ProjectDot, TaskMeta, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
+import { ProjectDot, TaskMeta, projectVars, useLocale, useProjectMap } from '@/components/TaskBits'
 import { JoinLink } from '@/components/JoinLink'
 import { joinUrlOf } from '@/domain/meeting'
 
@@ -120,40 +120,44 @@ export default function TodayPage() {
     if (notes !== (dayReview?.notes ?? '')) saveReview('daily', date, notes)
   }
 
+  const capacityLine = t('today.capacity', {
+    meetings: fmtHours(cap.meetingMinutes, locale),
+    planned: fmtHours(cap.plannedTaskMinutes, locale),
+    free: fmtHours(Math.max(0, cap.workMinutes - cap.meetingMinutes - cap.plannedTaskMinutes), locale),
+  })
+
   return (
     // The context spans the header too: › is a drop target (next day).
     <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="flex flex-col md:h-[calc(100dvh-5rem)] md:min-h-[520px]">
-        <header className="mb-4 flex items-end justify-between gap-4 md:mb-6 md:gap-6">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{date === today ? t('today.title') : title}</h1>
-              {date === today && <span className="text-[14px] text-ink-3">{title}</span>}
+        {/* On phones the capacity line gets its own full-width row, so it never wraps next to the day switcher. */}
+        <header className="mb-4 md:mb-6 md:flex md:items-end md:justify-between md:gap-6">
+          <div className="flex items-end justify-between gap-4 md:contents">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{date === today ? t('today.title') : title}</h1>
+                {date === today && <span className="text-[14px] text-ink-3">{title}</span>}
+              </div>
+              <p className="tnum mt-1 hidden whitespace-nowrap text-[13px] text-ink-2 md:block">{capacityLine}</p>
             </div>
-            <p className="tnum mt-1 text-[13px] text-ink-2">
-              {t('today.capacity', {
-                meetings: fmtHours(cap.meetingMinutes, locale),
-                planned: fmtHours(cap.plannedTaskMinutes, locale),
-                free: fmtHours(Math.max(0, cap.workMinutes - cap.meetingMinutes - cap.plannedTaskMinutes), locale),
-              })}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            {date !== today && (
-              <Button variant="ghost" size="sm" onClick={() => setDate(today)}>
-                {t('common.today')}
-              </Button>
-            )}
-            <IconButton label="‹" onClick={() => setDate(addDaysISO(date, -1))}>
-              <ChevronLeft size={16} />
-            </IconButton>
-            {/* dropping a planned task on › moves it to the next day */}
-            <Droppable id="next-day" className="rounded-md" overClassName="bg-accent-soft [&>button]:text-ink">
-              <IconButton label="›" onClick={() => setDate(addDaysISO(date, 1))}>
-                <ChevronRight size={16} />
+            <div className="flex items-center gap-1">
+              {date !== today && (
+                <Button variant="ghost" size="sm" onClick={() => setDate(today)}>
+                  {t('common.today')}
+                </Button>
+              )}
+              <IconButton label="‹" onClick={() => setDate(addDaysISO(date, -1))}>
+                <ChevronLeft size={16} />
               </IconButton>
-            </Droppable>
+              {/* dropping a planned task on › moves it to the next day */}
+              <Droppable id="next-day" className="rounded-md" overClassName="bg-accent-soft [&>button]:text-ink">
+                <IconButton label="›" onClick={() => setDate(addDaysISO(date, 1))}>
+                  <ChevronRight size={16} />
+                </IconButton>
+              </Droppable>
+            </div>
           </div>
+          <p className="tnum mt-1 whitespace-nowrap text-[13px] text-ink-2 md:hidden">{capacityLine}</p>
         </header>
 
         <div className="mb-4 md:hidden">
@@ -268,7 +272,7 @@ export default function TodayPage() {
                     <div className="mb-1 text-[12px] text-ink-3">{t('today.fromBlocks')}</div>
                     <ul className="flex flex-col gap-1">
                       {cands.fromBlocks.map(({ project, task }, i) =>
-                        project && !task ? (
+                        !task ? (
                           <li key={i} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[13px]" style={projectVars(project.color)}>
                             <span className="flex min-w-0 items-center gap-2 text-amber">
                               <ProjectDot color={project.color} />
@@ -278,12 +282,8 @@ export default function TodayPage() {
                               {t('today.pick')} →
                             </Link>
                           </li>
-                        ) : task ? (
-                          <CandidateRow key={task.id} task={task} date={date} />
                         ) : (
-                          <li key={i} className="px-2 py-1.5 text-[13px] text-ink-2">
-                            <ProjectChip project={null} /> · {t('today.chores')}
-                          </li>
+                          <CandidateRow key={task.id} task={task} date={date} />
                         ),
                       )}
                     </ul>
