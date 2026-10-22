@@ -218,23 +218,26 @@ export function candidatesForDay(
   blocks: PlanBlock[],
   projects: Project[],
   exclude: ReadonlySet<string> = new Set(),
-): { overdue: Task[]; due: Task[]; fromBlocks: { project: Project | null; task: Task | undefined }[]; chores: Task[] } {
+): { overdue: Task[]; due: Task[]; fromBlocks: { project: Project; task: Task | undefined }[]; chores: Task[] } {
   const open = tasks.filter((t) => isOpen(t) && t.plannedDate !== date && !exclude.has(t.id))
   const overdue = open.filter((t) => t.dueDate && compareISO(t.dueDate, date) < 0)
   const due = open.filter((t) => t.dueDate === date)
-  const todaysBlocks = blocksOn(blocks, date)
-  const fromBlocks = todaysBlocks
-    .map((b) => {
-      const project = b.projectId ? projects.find((p) => p.id === b.projectId) ?? null : null
-      const next = project ? tasks.find((t) => t.projectId === project.id && t.status === 'next' && isOpen(t)) : undefined
-      // Already in today's plan, or offered elsewhere → nothing to suggest for this block.
-      if (next && (next.plannedDate === date || exclude.has(next.id))) return null
+  const listed = new Set([...overdue, ...due].map((t) => t.id))
+  // A task deliberately planned for a later day waits for that day; deadlines above are always shown.
+  const waitsForLater = (t: Task) => !!t.plannedDate && compareISO(t.plannedDate, date) > 0
+  // One entry per project, however many blocks it has today. A chore block has no project to suggest from;
+  // its concrete candidates are the chores listed below.
+  const fromBlocks = [...new Set(blocksOn(blocks, date).map((b) => b.projectId))]
+    .map((projectId) => {
+      const project = projects.find((p) => p.id === projectId)
+      if (!project) return null
+      const next = tasks.find((t) => t.projectId === project.id && t.status === 'next' && isOpen(t))
+      // Already in today's plan, offered elsewhere or above, or waiting for its day → nothing to suggest for this block.
+      if (next && (next.plannedDate === date || exclude.has(next.id) || listed.has(next.id) || waitsForLater(next))) return null
       return { project, task: next }
     })
-    .filter((x): x is { project: Project | null; task: Task | undefined } => x !== null)
-  const listed = new Set([...overdue, ...due].map((t) => t.id))
-  // A chore deliberately planned for a later day waits for that day; deadlines above are always shown.
-  const chores = open.filter((t) => t.projectId === null && t.status === 'next' && !listed.has(t.id) && !(t.plannedDate && compareISO(t.plannedDate, date) > 0))
+    .filter((x): x is { project: Project; task: Task | undefined } => x !== null)
+  const chores = open.filter((t) => t.projectId === null && t.status === 'next' && !listed.has(t.id) && !waitsForLater(t))
   return { overdue, due, fromBlocks, chores }
 }
 
