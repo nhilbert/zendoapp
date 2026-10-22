@@ -130,9 +130,10 @@ export default function TodayPage() {
     // The context spans the header too: › is a drop target (next day).
     <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="flex flex-col md:h-[calc(100dvh-5rem)] md:min-h-[520px]">
-        {/* On phones the capacity line gets its own full-width row, so it never wraps next to the day switcher. */}
+        {/* On phones the controls (day switcher, list/timeline) stack top right, and the capacity line gets its own
+            full-width row, so it never wraps next to them. */}
         <header className="mb-4 md:mb-6 md:flex md:items-end md:justify-between md:gap-6">
-          <div className="flex items-end justify-between gap-4 md:contents">
+          <div className="flex items-start justify-between gap-4 md:contents">
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <h1 className="text-[22px] font-medium leading-tight tracking-[-0.02em] md:text-[26px]">{date === today ? t('today.title') : title}</h1>
@@ -140,36 +141,38 @@ export default function TodayPage() {
               </div>
               <p className="tnum mt-1 hidden whitespace-nowrap text-[13px] text-ink-2 md:block">{capacityLine}</p>
             </div>
-            <div className="flex items-center gap-1">
-              {date !== today && (
-                <Button variant="ghost" size="sm" onClick={() => setDate(today)}>
-                  {t('common.today')}
-                </Button>
-              )}
-              <IconButton label="‹" onClick={() => setDate(addDaysISO(date, -1))}>
-                <ChevronLeft size={16} />
-              </IconButton>
-              {/* dropping a planned task on › moves it to the next day */}
-              <Droppable id="next-day" className="rounded-md" overClassName="bg-accent-soft [&>button]:text-ink">
-                <IconButton label="›" onClick={() => setDate(addDaysISO(date, 1))}>
-                  <ChevronRight size={16} />
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex items-center gap-1">
+                {date !== today && (
+                  <Button variant="ghost" size="sm" onClick={() => setDate(today)}>
+                    {t('common.today')}
+                  </Button>
+                )}
+                <IconButton label="‹" onClick={() => setDate(addDaysISO(date, -1))}>
+                  <ChevronLeft size={16} />
                 </IconButton>
-              </Droppable>
+                {/* dropping a planned task on › moves it to the next day */}
+                <Droppable id="next-day" className="rounded-md" overClassName="bg-accent-soft [&>button]:text-ink">
+                  <IconButton label="›" onClick={() => setDate(addDaysISO(date, 1))}>
+                    <ChevronRight size={16} />
+                  </IconButton>
+                </Droppable>
+              </div>
+              <div className="md:hidden">
+                <Segmented<'plan' | 'timeline'>
+                  size="sm"
+                  value={phoneView}
+                  onChange={setPhoneView}
+                  options={[
+                    { value: 'plan', label: t('today.viewList') },
+                    { value: 'timeline', label: t('today.viewTimeline') },
+                  ]}
+                />
+              </div>
             </div>
           </div>
           <p className="tnum mt-1 whitespace-nowrap text-[13px] text-ink-2 md:hidden">{capacityLine}</p>
         </header>
-
-        <div className="mb-4 md:hidden">
-          <Segmented<'plan' | 'timeline'>
-            value={phoneView}
-            onChange={setPhoneView}
-            options={[
-              { value: 'plan', label: t('today.viewList') },
-              { value: 'timeline', label: t('today.viewTimeline') },
-            ]}
-          />
-        </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 md:grid-cols-[minmax(0,1fr)_360px] md:gap-12">
           {/* Timeline */}
