@@ -157,6 +157,23 @@ describe('selector review regressions', () => {
     expect(c.chores.map((t) => t.id)).toEqual(['chore'])
   })
 
+  it('candidatesForDay offers a project once per day, and not again when it is due or waits for a later day', () => {
+    const blocks: PlanBlock[] = [
+      { id: 'b1', date: '2026-10-20', projectId: 'p', size: 0.5 },
+      { id: 'b2', date: '2026-10-20', projectId: 'p', size: 0.5 },
+    ]
+    const twice = candidatesForDay(DATE, [task({ id: 'next', projectId: 'p', status: 'next' })], blocks, [project({})])
+    expect(twice.fromBlocks.map((b) => b.task?.id)).toEqual(['next'])
+    expect(candidatesForDay(DATE, [], blocks, [project({})]).fromBlocks.map((b) => b.project.id)).toEqual(['p'])
+
+    const due = candidatesForDay(DATE, [task({ id: 'next', projectId: 'p', status: 'next', dueDate: '2026-10-20' })], blocks, [project({})])
+    expect(due.due.map((t) => t.id)).toEqual(['next'])
+    expect(due.fromBlocks).toEqual([])
+
+    const later = candidatesForDay(DATE, [task({ id: 'next', projectId: 'p', status: 'next', plannedDate: '2026-10-26' })], blocks, [project({})])
+    expect(later.fromBlocks).toEqual([])
+  })
+
   it('candidatesForDay does not offer a chore planned for a later day, but keeps its deadline', () => {
     const tasks = [
       task({ id: 'later', status: 'next', plannedDate: '2026-10-26' }),
