@@ -74,7 +74,7 @@ export function esc(s: string): string {
 }
 
 const STYLE = `<style>
-.z{width:100%;height:100%;display:flex;flex-direction:column;color:#000;font-size:20px;line-height:1.25}
+.z{width:100%;height:100%;display:flex;flex-direction:column;color:#000;font-family:"Inter Variable",Inter,sans-serif;font-size:20px;line-height:1.25}
 .z-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:6px}
 .z-head b{font-size:22px}.z-head span{font-size:16px;white-space:nowrap}
 .z-row{display:flex;align-items:center;gap:10px;min-height:34px;border-bottom:1px solid #000}
@@ -92,8 +92,8 @@ const STYLE = `<style>
 .z-hour{position:absolute;left:-44px;right:0;border-top:1px solid #000;font-size:13px;line-height:1}
 .z-hour span{position:absolute;left:0;top:2px}
 .z-ev,.z-task{position:absolute;box-sizing:border-box;border:2px solid #000;border-radius:4px;padding:1px 6px;overflow:hidden;display:flex;gap:8px;align-items:flex-start;font-size:16px;line-height:1.2}
-.z-ev{background:#000;color:#fff}.z-task{background:#fff}
-.z-ev .z-t,.z-task .z-t{font-weight:600}
+.z-ev,.z-task{background:#fff}.z-ev{border-left-width:8px}.z-task{border-style:dashed}
+.z-ev .z-t{font-weight:700}.z-task .z-t{font-weight:500}
 .z-short{font-size:13px;padding-top:0;padding-bottom:0;align-items:center}
 .z-now{position:absolute;left:-44px;right:0;border-top:3px dashed #000}
 .z-now span{position:absolute;right:0;top:-20px;font-size:13px;background:#fff;padding:0 4px}
