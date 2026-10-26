@@ -84,8 +84,11 @@ const STYLE = `<style>
 .z-row:last-child{border-bottom:0}
 .z-box{flex:none;width:16px;height:16px;border:2px solid #000;border-radius:3px}
 .z-ring{flex:none;width:16px;height:16px;border:2px solid #000;border-radius:50%}
+.z-gap{flex:none;width:16px}
 .z-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.z-proj{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.z-wrap{align-items:flex-start;padding:4px 0}.z-wrap .z-box,.z-wrap .z-gap{margin-top:4px}.z-wrap .z-mark,.z-wrap .z-r{margin-top:2px}
+.z-tt{flex:1;min-width:0;hyphens:auto;overflow-wrap:anywhere}
+.z-proj{flex:0 1 auto;max-width:36%;text-align:right;font-size:13px;line-height:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding-top:3px;hyphens:auto;overflow-wrap:anywhere}
 .z-r{flex:none;font-size:16px;white-space:nowrap}
 .z-mark{flex:none;font-size:14px;font-weight:700;border:1.5px solid #000;border-radius:4px;padding:0 5px;white-space:nowrap}
 .z-sec{font-size:15px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-top:10px;padding-bottom:2px}
@@ -134,8 +137,36 @@ function clip(rows: string[], max: number, t: Translate): string {
 
 // ---------- to-dos ----------
 
-function todos(c: Ctx, maxRows: number, compact: boolean): string {
+// Heights in px of the to-do list's parts, for the estimate of what fits (see .z-* in STYLE).
+const ROW_LINE = 25
+const ROW_PAD = 9
+const ROW_MIN = 34
+const HEAD_H = 40
+const SEC_H = 31
+const MORE_H = 26
+
+interface Row {
+  html: string
+  h: number
+}
+
+/** Rows that fit into `budget` px; the rest is counted in a "+ n more" line. Text is never cut. */
+function fitRows(rows: Row[], budget: number, t: Translate): { html: string; used: number } {
+  const total = rows.reduce((sum, r) => sum + r.h, 0)
+  if (total <= budget) return { html: rows.map((r) => r.html).join(''), used: total }
+  let shown = 0
+  let used = 0
+  while (shown < rows.length && used + rows[shown].h <= budget - MORE_H) used += rows[shown++].h
+  return { html: rows.slice(0, shown).map((r) => r.html).join('') + `<div class="z-more">${esc(t('trmnl.more', { count: rows.length - shown }))}</div>`, used: used + MORE_H }
+}
+
+/**
+ * Today's to-dos. Titles and project names wrap instead of being cut off, so rows differ in height:
+ * each row's height is estimated from its text and the width the view leaves for it.
+ */
+function todos(c: Ctx, view: { width: number; height: number }, compact: boolean): string {
   const { d, t, today } = c
+  const inner = view.width - 20
   const project = (id: string | null) => (id ? d.projects.find((p) => p.id === id)?.name : undefined)
   const mark = (task: Task) =>
     task.dueDate && compareISO(task.dueDate, today) < 0
@@ -145,12 +176,23 @@ function todos(c: Ctx, maxRows: number, compact: boolean): string {
         : task.plannedDate && compareISO(task.plannedDate, today) < 0
           ? t('today.leftover')
           : undefined
-  const row = (task: Task, right?: string) => {
-    const m = mark(task)
-    const name = !compact && project(task.projectId)
-    return `<div class="z-row"><span class="z-box"></span><span class="z-t">${esc(task.title)}</span>${name ? `<span class="z-proj">${esc(name)}</span>` : ''}` +
-      `${m ? `<span class="z-mark">${esc(m)}</span>` : ''}${right ? `<span class="z-r">${esc(right)}</span>` : ''}</div>`
+  const row = (box: boolean, title: string, opts: { project?: string; mark?: string; time?: string } = {}): Row => {
+    const name = compact ? undefined : opts.project
+    // Upper-case, letter-spaced 13px text: about 9.75px per character.
+    const projWidth = name ? Math.min(name.length * 9.75, inner * 0.36) : 0
+    const right = (name ? projWidth + 10 : 0) + (opts.mark ? opts.mark.length * 8.5 + 24 : 0) + (opts.time ? 60 : 0)
+    const titleLines = wrappedLines(title, inner - 26 - right, 20)
+    const projLines = name ? wrappedLines(name, projWidth, 17.4) : 0
+    return {
+      h: Math.max(ROW_MIN, titleLines * ROW_LINE + ROW_PAD, projLines * 16 + ROW_PAD),
+      html:
+        `<div class="z-row z-wrap"><span class="${box ? 'z-box' : 'z-gap'}"></span><span class="z-tt">${esc(title)}</span>` +
+        `${name ? `<span class="z-proj">${esc(name)}</span>` : ''}${opts.mark ? `<span class="z-mark">${esc(opts.mark)}</span>` : ''}` +
+        `${opts.time ? `<span class="z-r">${esc(opts.time)}</span>` : ''}</div>`,
+    }
   }
+  const taskRow = (task: Task) =>
+    row(true, task.title, { project: project(task.projectId), mark: mark(task), time: task.plannedStart ? fmtTime(task.plannedStart, c.locale) : undefined })
   const planned = tasksPlannedOn(d.tasks, today).filter(isOpen)
   const timed = planned.filter((x) => x.plannedStart).sort(sortByTime)
   const untimed = planned.filter((x) => !x.plannedStart).sort(sortTasks)
@@ -158,25 +200,19 @@ function todos(c: Ctx, maxRows: number, compact: boolean): string {
   // and one next step per project blocked in the week plan.
   const leftovers = leftoverTasks(d.tasks, today)
   const cands = candidatesForDay(today, d.tasks, d.blocks, d.projects, new Set(leftovers.map((x) => x.id)))
-  const rows = [
-    ...timed.map((x) => row(x, fmtTime(x.plannedStart!, c.locale))),
-    ...untimed.map((x) => row(x)),
-    ...leftovers.map((x) => row(x)),
-    ...cands.overdue.map((x) => row(x)),
-    ...cands.due.map((x) => row(x)),
-  ]
-  const next = cands.fromBlocks.map(({ project: p, task }) =>
-    task
-      ? `<div class="z-row"><span class="z-ring"></span><span class="z-t">${esc(task.title)}</span>${compact ? '' : `<span class="z-proj">${esc(p.name)}</span>`}</div>`
-      : `<div class="z-row"><span class="z-ring"></span><span class="z-t">${esc(t('today.nextMissing', { project: p.name }))}</span></div>`,
-  )
+  const rows = [...timed, ...untimed, ...leftovers, ...cands.overdue, ...cands.due].map(taskRow)
+  // A missing next action is a hint, not a task: no checkbox, but aligned with the rows above.
+  const next = cands.fromBlocks.map(({ project: p, task }) => (task ? row(true, task.title, { project: p.name }) : row(false, t('today.nextMissing', { project: p.name }))))
   const cap = dayCapacity(today, d.settings, d.events, d.blocks, d.tasks)
   let body = compact ? '' : head(longDate(c), t('week.planned', { hours: fmtHours(cap.plannedTaskMinutes, c.locale) }))
   if (!rows.length && !next.length) return body + `<div class="z-empty">${esc(t('trmnl.noTodos'))}</div>`
-  // The week plan's suggestions get what the plan leaves, at least a header and one row when there are any.
-  const forNext = next.length ? Math.min(next.length + 1, Math.max(2, maxRows - rows.length)) : 0
-  body += clip(rows, maxRows - forNext, t)
-  if (forNext) body += `<div class="z-sec">${esc(t('today.fromBlocks'))}</div>` + clip(next, forNext - 1, t)
+  const budget = view.height - 40 - 20 - (compact ? 0 : HEAD_H)
+  // The week plan's suggestions get what the plan leaves, at least their header and first row.
+  const reserve = next.length ? SEC_H + next[0].h : 0
+  const plan = fitRows(rows, Math.max(budget - reserve, Math.min(budget, rows[0]?.h ?? 0)), t)
+  body += plan.html
+  const left = budget - plan.used - SEC_H
+  if (next.length && left >= next[0].h) body += `<div class="z-sec">${esc(t('today.fromBlocks'))}</div>` + fitRows(next, left, t).html
   return body
 }
 
@@ -443,10 +479,10 @@ export function renderScreens(view: TrmnlView, state: DisplayState, today: ISODa
   if (view === 'todos') {
     const title = t('trmnl.todos')
     return {
-      markup: screen(locale, title, updated(c), todos(c, 11, false)),
-      markup_half_vertical: screen(locale, title, updated(c), todos(c, 11, true)),
-      markup_half_horizontal: screen(locale, title, updated(c), todos(c, 5, false)),
-      markup_quadrant: screen(locale, title, updated(c), todos(c, 5, true)),
+      markup: screen(locale, title, updated(c), todos(c, { width: 800, height: 480 }, false)),
+      markup_half_vertical: screen(locale, title, updated(c), todos(c, { width: 400, height: 480 }, true)),
+      markup_half_horizontal: screen(locale, title, updated(c), todos(c, { width: 800, height: 240 }, false)),
+      markup_quadrant: screen(locale, title, updated(c), todos(c, { width: 400, height: 240 }, true)),
     }
   }
   if (view === 'schedule') {
