@@ -20,6 +20,7 @@ const STATE: DisplayState = {
     task({ id: 'slides', title: 'Folien {{ prüfen }}', plannedDate: TODAY }),
     task({ id: 'done', title: 'Erledigt', plannedDate: TODAY, status: 'done' }),
     task({ id: 'invoice', title: 'Rechnung an Kunde C', dueDate: TODAY }),
+    task({ id: 'call', title: 'Lieferant anrufen', status: 'next', plannedDate: '2026-10-24' }),
     task({ id: 'west-next', title: 'Interviewfragen', projectId: 'west', status: 'next' }),
     task({ id: 'secret', title: 'Wohnung besichtigen', projectId: 'home', plannedDate: TODAY }),
     task({ id: 'secret2', title: 'Arzt anrufen', private: true, plannedDate: TODAY }),
@@ -43,7 +44,7 @@ const STATE: DisplayState = {
 describe('TRMNL screens', () => {
   it('lists today’s open to-dos, deadlines and the week plan’s next steps, never private ones', () => {
     const { markup, markup_quadrant } = renderScreens('todos', STATE, TODAY, '08:15')
-    for (const title of ['Angebot Nord', 'Rechnung an Kunde C', 'Projekt West · Interviewfragen', 'Heute fällig', 'Aus dem Wochenplan', 'Stand 08:15', 'Montag, 26. Oktober']) expect(markup).toContain(title)
+    for (const title of ['Angebot Nord', 'Rechnung an Kunde C', 'Lieferant anrufen', 'Liegengeblieben', 'Projekt West · Interviewfragen', 'Heute fällig', 'Aus dem Wochenplan', 'Stand 08:15', 'Montag, 26. Oktober']) expect(markup).toContain(title)
     for (const hidden of ['Erledigt', 'Wohnung', 'Arzt', 'Umzug']) expect(markup).not.toContain(hidden)
     expect(markup.indexOf('Angebot Nord')).toBeLessThan(markup.indexOf('Folien'))
     // TRMNL runs the markup through Liquid: braces from the data must not reach it

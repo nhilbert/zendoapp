@@ -4,7 +4,7 @@ Zendo can show your plan on a [TRMNL](https://trmnl.com) e-ink display. It has t
 
 | Screen | Shows |
 |---|---|
-| **Today's to-dos** | Open tasks planned for today (timed ones first, with their time), open tasks due today or overdue, and one next step per project blocked in today's week plan, as on the Today page. |
+| **Today's to-dos** | Open tasks planned for today (timed ones first, with their time), unfinished tasks planned for an earlier day ("Leftover"), open tasks due today or overdue, and one next step per project blocked in today's week plan, as on the Today page. |
 | **Today's schedule** | A time grid of the day with meetings (framed, with a bar on the left) and tasks planned for a time (dashed frame), the "now" line and the Today page's capacity line. |
 | **Week** | The next five days from today: how full each day is, the hours still free, the plan blocks per project, all-day appointments and workshops by name, and the number of other meetings. Days off appear only when something is planned on them. |
 

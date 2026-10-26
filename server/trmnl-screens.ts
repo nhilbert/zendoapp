@@ -11,6 +11,7 @@ import {
   isOpen,
   isOverplanned,
   isWorkable,
+  leftoverTasks,
   safeTimes,
   sortByTime,
   sortTasks,
@@ -136,7 +137,13 @@ function todos(c: Ctx, maxRows: number, compact: boolean): string {
   const { d, t, today } = c
   const project = (id: string | null) => (id ? d.projects.find((p) => p.id === id)?.name : undefined)
   const mark = (task: Task) =>
-    task.dueDate && compareISO(task.dueDate, today) < 0 ? t('today.overdue') : task.dueDate === today ? t('today.dueToday') : undefined
+    task.dueDate && compareISO(task.dueDate, today) < 0
+      ? t('today.overdue')
+      : task.dueDate === today
+        ? t('today.dueToday')
+        : task.plannedDate && compareISO(task.plannedDate, today) < 0
+          ? t('today.leftover')
+          : undefined
   const row = (task: Task, right?: string) => {
     const m = mark(task)
     const name = !compact && project(task.projectId)
@@ -146,9 +153,17 @@ function todos(c: Ctx, maxRows: number, compact: boolean): string {
   const planned = tasksPlannedOn(d.tasks, today).filter(isOpen)
   const timed = planned.filter((x) => x.plannedStart).sort(sortByTime)
   const untimed = planned.filter((x) => !x.plannedStart).sort(sortTasks)
-  // Deadlines not yet in today's plan, and one next step per project blocked in the week plan – as on Today.
-  const cands = candidatesForDay(today, d.tasks, d.blocks, d.projects)
-  const rows = [...timed.map((x) => row(x, fmtTime(x.plannedStart!, c.locale))), ...untimed.map((x) => row(x)), ...cands.overdue.map((x) => row(x)), ...cands.due.map((x) => row(x))]
+  // Then, as on Today: unfinished tasks planned for an earlier day, deadlines not yet in today's plan,
+  // and one next step per project blocked in the week plan.
+  const leftovers = leftoverTasks(d.tasks, today)
+  const cands = candidatesForDay(today, d.tasks, d.blocks, d.projects, new Set(leftovers.map((x) => x.id)))
+  const rows = [
+    ...timed.map((x) => row(x, fmtTime(x.plannedStart!, c.locale))),
+    ...untimed.map((x) => row(x)),
+    ...leftovers.map((x) => row(x)),
+    ...cands.overdue.map((x) => row(x)),
+    ...cands.due.map((x) => row(x)),
+  ]
   const next = cands.fromBlocks.map(({ project: p, task }) =>
     `<div class="z-row"><span class="z-ring"></span><span class="z-t">${task ? `${esc(p.name)} · ${esc(task.title)}` : esc(t('today.nextMissing', { project: p.name }))}</span></div>`,
   )
