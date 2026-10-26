@@ -528,7 +528,7 @@
     "viewSchedule": "Today's schedule",
     "viewWeek": "Week",
     "installTitle": "Which view should this TRMNL show?",
-    "installHint": "Private projects and tasks never appear on the display, private appointments only as “Busy”. You can change the view later in TRMNL under “Configure”.",
+    "installHint": "The display shows private projects, tasks and appointments as the app does: while “hide private” is on they are left out, and private appointments appear only as “Busy”. You can change the view later in TRMNL under “Configure”.",
     "installFailed": "TRMNL did not accept the installation. Please start it again in TRMNL.",
     "expired": "This request has expired. Please start the installation again in TRMNL.",
     "notAllowed": "This account may not connect Zendo to a TRMNL.",

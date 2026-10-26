@@ -27,8 +27,8 @@ import { translator, type Translate } from './i18n.ts'
  * mashup slots). Pure: state in, HTML out. The HTML uses the TRMNL framework (layout, title_bar)
  * plus a few own rules, black on white only, since the original TRMNL dithers grey.
  *
- * Private projects and tasks are always left out and private appointments show as "Busy", whatever
- * the app's "hide private" setting: the display hangs on a wall and TRMNL's servers render it.
+ * Private items follow the app's "hide private" switch: while it is on, private projects and tasks
+ * are left out and private appointments show as "Busy", as in the app.
  */
 
 export type TrmnlView = 'todos' | 'schedule' | 'week'
@@ -53,18 +53,19 @@ interface DisplayData {
 
 export type Screens = { markup: string; markup_half_horizontal: string; markup_half_vertical: string; markup_quadrant: string }
 
-/** What the display may show: the app's visibility rules with "hide private" always on. */
+/** What the display may show: the app's visibility rules, including its "hide private" switch. */
 export function displayData(state: DisplayState, busy: string): DisplayData {
-  const privateIds = new Set(state.projects.filter((p) => p.private).map((p) => p.id))
-  const projects = state.projects.filter((p) => p.status !== 'archived' && !p.private).sort(compareProjects)
+  const hide = !!state.settings.hidePrivate
+  const privateIds = new Set(hide ? state.projects.filter((p) => p.private).map((p) => p.id) : [])
+  const projects = state.projects.filter((p) => p.status !== 'archived' && !privateIds.has(p.id)).sort(compareProjects)
   const workable = new Set(projects.filter(isWorkable).map((p) => p.id))
   return {
     projects,
-    tasks: state.tasks.filter((t) => !t.private && (!t.projectId || workable.has(t.projectId))),
-    blocks: visibleBlocks(state.blocks, state.projects, true),
+    tasks: state.tasks.filter((t) => !(hide && t.private) && (!t.projectId || workable.has(t.projectId))),
+    blocks: visibleBlocks(state.blocks, state.projects, hide),
     // Masked, never removed: their time is still taken.
     events: state.events.map((e) =>
-      e.private || (e.projectId && privateIds.has(e.projectId)) ? { ...e, title: busy, location: undefined, joinUrl: undefined, projectId: null } : e,
+      hide && (e.private || (e.projectId && privateIds.has(e.projectId))) ? { ...e, title: busy, location: undefined, joinUrl: undefined, projectId: null } : e,
     ),
     settings: safeTimes({ ...DEFAULT_SETTINGS, ...state.settings }),
   }

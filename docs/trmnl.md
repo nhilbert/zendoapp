@@ -10,7 +10,7 @@ Zendo can show your plan on a [TRMNL](https://trmnl.com) e-ink display. It has t
 
 Install the plugin three times (one per screen) and put them into your TRMNL playlist. Each screen also has a compact version for TRMNL mashups (half or quarter screen).
 
-**Privacy.** TRMNL's servers fetch and render the screens, so your plan passes through TRMNL. Private projects and tasks are never sent, whatever the app's "hide private" setting, and private appointments only appear as "Busy". Zendo stores no TRMNL tokens, only their SHA-256 hashes.
+**Privacy.** TRMNL's servers fetch and render the screens, so your plan passes through TRMNL. Private items follow the app's "hide private" switch (sidebar, key `h`): while it is on, private projects and tasks are not sent and private appointments only appear as "Busy"; while it is off, the display shows them like the app does. The display picks up a change of the switch on its next refresh. Zendo stores no TRMNL tokens, only their SHA-256 hashes.
 
 ## How it works
 

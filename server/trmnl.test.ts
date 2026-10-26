@@ -38,7 +38,7 @@ const STATE: DisplayState = {
     { id: 'b4', date: '2026-10-27', projectId: null, size: 0.25 },
     { id: 'b5', date: '2026-10-29', projectId: 'home', size: 0.5 },
   ] as PlanBlock[],
-  settings: { ...DEFAULT_SETTINGS, locale: 'de' },
+  settings: { ...DEFAULT_SETTINGS, locale: 'de', hidePrivate: true },
 }
 
 describe('TRMNL screens', () => {
@@ -51,6 +51,16 @@ describe('TRMNL screens', () => {
     expect(markup).toContain('Folien &#123;&#123; prüfen &#125;&#125;')
     expect(markup).not.toMatch(/\{\{|\{%/)
     expect(markup_quadrant).not.toContain('class="z-proj"')
+  })
+
+  it('shows private items when the app shows them', () => {
+    const shown = { ...STATE, settings: { ...STATE.settings, hidePrivate: false } }
+    const todos = renderScreens('todos', shown, TODAY, '08:15').markup
+    for (const title of ['Wohnung besichtigen', 'Arzt anrufen']) expect(todos).toContain(title)
+    const schedule = renderScreens('schedule', shown, TODAY, '12:00').markup
+    expect(schedule).toContain('Coaching Frau B.')
+    expect(schedule).not.toContain('Belegt')
+    expect(renderScreens('week', shown, TODAY, '08:15').markup).toContain('Umzug')
   })
 
   it('cuts long lists and says how many more there are', () => {
