@@ -512,5 +512,30 @@
     "dayBlocked": "{{size}} day blocked today ({{hours}})",
     "notBlocked": "Not blocked in today's week plan.",
     "unavailable": "This project is archived or no longer exists."
+  },
+  "trmnl": {
+    "todos": "To-dos",
+    "schedule": "Schedule",
+    "week": "Week",
+    "updated": "As of {{time}}",
+    "more": "+ {{count}} more",
+    "noTodos": "Nothing planned for today.",
+    "nothingScheduled": "Nothing scheduled for a time today.",
+    "meetings_one": "{{count}} meeting",
+    "meetings_other": "{{count}} meetings",
+    "busy": "Busy",
+    "viewTodos": "Today's to-dos",
+    "viewSchedule": "Today's schedule",
+    "viewWeek": "Week",
+    "installTitle": "Which view should this TRMNL show?",
+    "installHint": "Private projects and tasks never appear on the display, private appointments only as “Busy”. You can change the view later in TRMNL under “Configure”.",
+    "installFailed": "TRMNL did not accept the installation. Please start it again in TRMNL.",
+    "expired": "This request has expired. Please start the installation again in TRMNL.",
+    "notAllowed": "This account may not connect Zendo to a TRMNL.",
+    "manageTitle": "View of this TRMNL",
+    "manageCurrent": "Now showing: {{view}}",
+    "manageUnknown": "Zendo does not know this installation. Please install the plugin again in TRMNL.",
+    "saved": "Saved. The display shows the new view on its next refresh.",
+    "back": "Back to TRMNL"
   }
 }

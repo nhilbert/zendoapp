@@ -58,8 +58,43 @@ function socketAddress(c: Context): string | undefined {
   }
 }
 
-function escapeHtml(s: string): string {
+/**
+ * Who is approving: the e-mail from the login proxy (hosted) or "local" for a browser on this machine.
+ * Locally both the socket's peer and the Host header must be loopback: the Host header alone is set by
+ * the client, and in a container (ZENDO_HOST=0.0.0.0) other machines may reach the port. Hosted, the
+ * header is only as trustworthy as the rule that the port is reachable through the proxy alone.
+ * Shared with the TRMNL installation page (server/trmnl.ts). An empty `allowedUsers` means local mode.
+ */
+export function signedInUser(
+  c: Context,
+  cfg: { allowedUsers: string[]; userHeader?: string; remoteAddress?: (c: Context) => string | undefined },
+): string | null {
+  if (cfg.allowedUsers.length) {
+    const email = cfg.userHeader ? c.req.header(cfg.userHeader)?.trim().toLowerCase() : undefined
+    return email && cfg.allowedUsers.includes(email) ? email : null
+  }
+  const host = (c.req.header('host') ?? new URL(c.req.url).host).replace(/:\d+$/, '')
+  return isLoopbackAddress((cfg.remoteAddress ?? socketAddress)(c)) && isLoopbackHost(host) && !c.req.header('x-forwarded-for') ? 'local' : null
+}
+
+export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
+}
+
+/** A small self-contained page (no scripts, not framable) for the approval steps; also used by server/trmnl.ts. */
+export function simplePage(c: Context, title: string, body: string, status: 200 | 400 | 403 | 502 = 200, lang = 'en') {
+  c.header('X-Frame-Options', 'DENY')
+  c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+  c.header('Cache-Control', 'no-store')
+  c.header('Referrer-Policy', 'no-referrer')
+  return c.html(
+    `<!doctype html><html lang="${escapeHtml(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>` +
+      `<style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;color:#1f2421;line-height:1.5}` +
+      `button{font:inherit;padding:.5rem 1.1rem;border-radius:.5rem;border:1px solid #9aa59c;background:#fff;margin-right:.5rem;cursor:pointer}` +
+      `button.ok{background:#4f6b55;color:#fff;border-color:#4f6b55}code{background:#eef1ee;padding:0 .25rem;border-radius:.25rem}.warn{color:#8a5a00}</style></head>` +
+      `<body><h1 style="font-size:1.3rem">${escapeHtml(title)}</h1>${body}</body></html>`,
+    status,
+  )
 }
 
 interface Client {
@@ -113,19 +148,9 @@ export class OAuthServer {
 
   // ---------- policy ----------
 
-  /**
-   * Who is approving: the e-mail from the login proxy (hosted) or "local" for a browser on this machine.
-   * Locally both the socket's peer and the Host header must be loopback: the Host header alone is set by
-   * the client, and in a container (ZENDO_HOST=0.0.0.0) other machines may reach the port. Hosted, the
-   * header is only as trustworthy as the rule that the port is reachable through the proxy alone.
-   */
+  /** Who is approving (see signedInUser). */
   private approver(c: Context): string | null {
-    if (!this.local) {
-      const email = this.cfg.userHeader ? c.req.header(this.cfg.userHeader)?.trim().toLowerCase() : undefined
-      return email && this.cfg.allowedUsers.includes(email) ? email : null
-    }
-    const host = (c.req.header('host') ?? new URL(c.req.url).host).replace(/:\d+$/, '')
-    return isLoopbackAddress(this.cfg.remoteAddress(c)) && isLoopbackHost(host) && !c.req.header('x-forwarded-for') ? 'local' : null
+    return signedInUser(c, this.cfg)
   }
 
   /** Redirect URIs a client may register: Claude's callbacks, loopback (Claude Code, RFC 8252) and configured extras. */
@@ -224,18 +249,7 @@ export class OAuthServer {
   // ---------- HTTP ----------
 
   private page(c: Context, title: string, body: string, status: 200 | 400 | 403 = 200) {
-    c.header('X-Frame-Options', 'DENY')
-    c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
-    c.header('Cache-Control', 'no-store')
-    c.header('Referrer-Policy', 'no-referrer')
-    return c.html(
-      `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>` +
-        `<style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;color:#1f2421;line-height:1.5}` +
-        `button{font:inherit;padding:.5rem 1.1rem;border-radius:.5rem;border:1px solid #9aa59c;background:#fff;margin-right:.5rem;cursor:pointer}` +
-        `button.ok{background:#4f6b55;color:#fff;border-color:#4f6b55}code{background:#eef1ee;padding:0 .25rem;border-radius:.25rem}.warn{color:#8a5a00}</style></head>` +
-        `<body><h1 style="font-size:1.3rem">${escapeHtml(title)}</h1>${body}</body></html>`,
-      status,
-    )
+    return simplePage(c, title, body, status)
   }
 
   routes(): Hono {

@@ -42,6 +42,8 @@ curl -s -X POST http://127.0.0.1:5174/api/inbox -H 'content-type: application/js
 
 AI agents (Claude Desktop, Claude Code …) can work with Zendo through its MCP server: capture into the inbox from meeting notes or e-mails, read and adapt the day and week plan, manage tasks and projects. `npm run mcp` for a local agent, or `/mcp` on the server with OAuth (`ZENDO_MCP_OAUTH=1`, works as a Claude connector) – see [docs/mcp.md](docs/mcp.md).
 
+Your plan can also appear on a [TRMNL](https://trmnl.com) e-ink display: three screens (today's to-dos, today's schedule, the week), installed from TRMNL as a plugin (`ZENDO_TRMNL=1`) – see [docs/trmnl.md](docs/trmnl.md).
+
 To see your Outlook calendar in Zendo, register an app once ([docs/outlook-setup.md](docs/outlook-setup.md)), put the two IDs into `.env`, start `npm run dev` and press **Connect Microsoft 365** in Settings. The sign-in tokens stay in `data/` (gitignored).
 
 The first start loads fictional sample data so you can explore. Settings → Data shows the connection to the local server and lets you clear everything, export/import JSON, or reload the sample. If you used the browser-only prototype before, its data is pushed to the server on the first start; if the server already holds different data, Zendo asks which side to keep and keeps a copy of the browser's data. Note that `localhost:5173` and `127.0.0.1:5173` are separate browser storages.

@@ -70,6 +70,8 @@ zendoapp/
 │  ├─ ops.ts                agent operations on the database (inbox, tasks, projects, plan, reviews)
 │  ├─ mcp.ts · mcp-stdio.ts MCP server: /mcp over HTTP (OAuth or token), or stdio
 │  ├─ oauth.ts              OAuth 2.1 authorization server for /mcp (DCR, PKCE, rotating refresh tokens)
+│  ├─ trmnl.ts · trmnl-screens.ts  TRMNL display plugin: install flow and the three e-ink screens
+│  ├─ i18n.ts               the app's translation files for pages and screens the server renders
 │  └─ index.ts              entry point
 ├─ src/sync/                client: api wrapper, diff-based sync with offline queue
 ├─ data/                    gitignored: zendo.db, backups/, msal-cache.json
@@ -120,6 +122,8 @@ All JSON under `/api`. Every request must carry the header `x-zendo: 1` and come
 | `POST /api/ai/week` | Week proposal for `{ start, days ≤ 14, today, now, locale, includePrivate }`: additional blocks `{ date, projectId, size, note, reason }` plus a summary, read from the database and fitted into each day's free time (the same capacity rules as Week and Today); `dropped` counts suggestions that did not fit. Days before the browser's `today` are skipped; private projects only with `includePrivate`. |
 
 `/mcp` (outside `/api`, only when `ZENDO_MCP_OAUTH=1` or `ZENDO_MCP_TOKEN` is set): MCP over Streamable HTTP for AI agents, authenticated with `Authorization: Bearer` (an OAuth access token or the static token), not with the `x-zendo` header. With OAuth, `server/oauth.ts` serves `/.well-known/oauth-protected-resource[/mcp]`, `/.well-known/oauth-authorization-server` and `/oauth/{register,authorize,token,revoke}`; approval is delegated to the login proxy (allowed e-mails from its header) or, locally, to a loopback browser; clients and token hashes live in `oauth_clients` / `oauth_tokens` (migration 0002); `GET/DELETE /api/mcp/connections` backs Settings → AI agents. Its tools (`server/mcp.ts`) wrap `server/ops.ts`, which reads the snapshot, applies the shared rules from `src/domain/taskRules.ts` and writes the difference through `Repo.applyChanges`. The same tools run over stdio (`npm run mcp`). See [mcp.md](mcp.md).
+
+`/trmnl` (outside `/api`, only with `ZENDO_TRMNL=1`): Zendo as a TRMNL plugin. `/trmnl/install` and `/trmnl/manage` are pages behind the login (the signed-in user picks one of three screens per installation); `/trmnl/installed`, `/trmnl/markup` and `/trmnl/uninstalled` are called by TRMNL's servers with the installation's bearer token, stored only as a hash in `trmnl_connections` (migration 0003). The screens (`server/trmnl-screens.ts`) reuse the Today and Week selectors and always leave private items out. See [trmnl.md](trmnl.md).
 
 Planned: `POST /api/ai/project-actions`, `GET /api/export`.
 

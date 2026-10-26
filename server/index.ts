@@ -17,6 +17,7 @@ import { createApp } from './app.ts'
 import { aiRoutes, resolveAi, type AiProviderName } from './ai.ts'
 import { mcpRoutes } from './mcp.ts'
 import { OAuthServer } from './oauth.ts'
+import { TrmnlService } from './trmnl.ts'
 
 if (existsSync('.env')) process.loadEnvFile('.env')
 
@@ -71,15 +72,27 @@ if (process.env.ZENDO_MCP_OAUTH === '1') {
       extraRedirects: list(process.env.ZENDO_OAUTH_REDIRECTS),
     })
 }
+// TRMNL e-ink display (docs/trmnl.md): installed from TRMNL, approved by the same users as MCP connections.
+let trmnl: TrmnlService | undefined
+if (process.env.ZENDO_TRMNL === '1') {
+  if (PUBLIC_URL && !OAUTH_USERS.length) console.error('ZENDO_TRMNL=1 needs ZENDO_OAUTH_USERS when ZENDO_PUBLIC_URL is set – TRMNL stays off.')
+  else
+    trmnl = new TrmnlService(db, repo, {
+      allowedUsers: OAUTH_USERS,
+      userHeader: process.env.ZENDO_OAUTH_USER_HEADER?.trim() || 'x-auth-request-email',
+      accounts: list(process.env.ZENDO_TRMNL_ACCOUNTS ?? process.env.ZENDO_OAUTH_USERS),
+    })
+}
 const mcp = MCP_TOKEN || oauth ? mcpRoutes(repo, { token: MCP_TOKEN, oauth }, { hidePrivate: process.env.ZENDO_MCP_HIDE_PRIVATE === '1' }) : undefined
 const hasUi = existsSync(path.join(DIST, 'index.html'))
-const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), mcp, oauth: oauth && { routes: oauth.routes(), admin: oauth.adminRoutes() }, staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL })
+const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), mcp, oauth: oauth && { routes: oauth.routes(), admin: oauth.adminRoutes() }, trmnl: trmnl?.routes(), staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL })
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, () => {
   console.log(`Zendo server on http://${HOST}:${PORT}${PUBLIC_URL ? ` (public ${PUBLIC_URL.origin})` : ''} · database ${DB_FILE}${backup ? ` · backup ${backup}` : ''}`)
   if (!hasUi) console.log('No dist/ build found: serving the API only (fine with npm run dev; run npm run build for npm start).')
   if (!process.env.MS_CLIENT_ID) console.log('Microsoft 365 not configured (no .env) – calendar routes answer 503, everything else works.')
   console.log(mcp ? `MCP: ${oauth ? oauth.resource : `http://${HOST}:${PORT}/mcp`} (${[MCP_TOKEN && 'token', oauth && 'OAuth'].filter(Boolean).join(' + ')})` : 'MCP: off over HTTP (set ZENDO_MCP_OAUTH=1 or ZENDO_MCP_TOKEN); stdio via npm run mcp')
+  if (trmnl) console.log(`TRMNL: ${PUBLIC_URL?.origin ?? `http://${HOST}:${PORT}`}/trmnl (docs/trmnl.md)`)
   console.log(ai ? `AI: ${ai.provider} · ${ai.model} (Clarify: ${ai.clarifyModel})` : 'AI: not configured (add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env)')
 })
 server.on('error', (err: NodeJS.ErrnoException) => {
