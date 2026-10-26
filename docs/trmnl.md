@@ -46,12 +46,15 @@ TRMNL's servers call three paths without a browser session; the token protects t
 | Path | Login proxy |
 |---|---|
 | `/trmnl/install`, `/trmnl/manage` | **behind** `forward_auth` |
-| `/trmnl/installed`, `/trmnl/markup`, `/trmnl/uninstalled` | bypass |
+| `/trmnl/installed`, `/trmnl/markup`, `/trmnl/uninstalled` | bypass, POST only (TRMNL never sends anything else) |
 
 Caddy, inside the site block and before the login (next to the MCP routes, see [mcp.md](mcp.md#hosting-behind-caddy-and-oauth2-proxy)):
 
 ```caddy
-@trmnl path /trmnl/installed /trmnl/markup /trmnl/uninstalled
+@trmnl {
+	method POST
+	path /trmnl/installed /trmnl/markup /trmnl/uninstalled
+}
 handle @trmnl {
 	reverse_proxy zendo:5174
 }
@@ -65,7 +68,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://zendo.example.com/trmnl
 
 ### 3. TRMNL
 
-At trmnl.com → *Plugins* → *My Plugins* → *New*. All fields are required:
+At https://trmnl.com/plugins/my/new (needs TRMNL's Developer Edition upgrade; *Developer Apps* under Account → Developer is something else, a sign-in for apps that control a TRMNL account). All fields are required:
 
 | Field | Value |
 |---|---|
