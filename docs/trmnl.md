@@ -6,7 +6,7 @@ Zendo can show your plan on a [TRMNL](https://trmnl.com) e-ink display. It has t
 |---|---|
 | **Today's to-dos** | Open tasks planned for today (timed ones first, with their time), unfinished tasks planned for an earlier day ("Leftover"), open tasks due today or overdue, and one next step per project blocked in today's week plan, as on the Today page. |
 | **Today's schedule** | A time grid of the day with meetings (framed, with a bar on the left) and tasks planned for a time (dashed frame), the "now" line and the Today page's capacity line. |
-| **Week** | The next five days from today: how full each day is, the hours still free, the plan blocks per project, all-day appointments and workshops by name, and the number of other meetings. Days off appear only when something is planned on them. |
+| **Week** | The next five days from today as a table: per day the hours still free, the appointments of the morning and of the afternoon (all-day ones and full-day workshops across both), and the plan blocks per project ("focus"). Rows take the height their content needs; nothing is cut off, a full cell ends in "+ n more". Days off appear only when something is planned on them. |
 
 Install the plugin three times (one per screen) and put them into your TRMNL playlist. Each screen also has a compact version for TRMNL mashups (half or quarter screen).
 

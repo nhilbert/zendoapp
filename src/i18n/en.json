@@ -536,6 +536,9 @@
     "manageCurrent": "Now showing: {{view}}",
     "manageUnknown": "Zendo does not know this installation. Please install the plugin again in TRMNL.",
     "saved": "Saved. The display shows the new view on its next refresh.",
-    "back": "Back to TRMNL"
+    "back": "Back to TRMNL",
+    "morning": "Morning",
+    "afternoon": "Afternoon",
+    "focus": "Focus"
   }
 }

@@ -3,7 +3,7 @@ import { openDb } from './db.ts'
 import { Repo } from './repo.ts'
 import { createApp } from './app.ts'
 import { TrmnlService, type TrmnlConfig } from './trmnl.ts'
-import { esc, renderScreens, type DisplayState } from './trmnl-screens.ts'
+import { esc, renderScreens, wrappedLines, type DisplayState } from './trmnl-screens.ts'
 import { STORE_VERSION } from '../src/domain/migrations.ts'
 import { DEFAULT_SETTINGS, type CalendarEvent, type PlanBlock, type Project, type Task } from '../src/domain/types.ts'
 
@@ -75,20 +75,50 @@ describe('TRMNL screens', () => {
     expect(markup_quadrant).toContain('Belegt')
   })
 
-  it('shows the next five work days with blocks per project, named workshops and free hours', () => {
+  it('shows the next five work days: morning, afternoon, focus and what is left', () => {
+    const days = (m: string) => [...m.matchAll(/class="zw-c zw-d[^"]*"><b>([^<]+)</g)].map((x) => x[1])
     const { markup, markup_quadrant } = renderScreens('week', STATE, TODAY, '08:15')
-    const days = [...markup.matchAll(/class="z-day-h">([^<]+)</g)].map((m) => m[1])
-    expect(days).toEqual(['Mo 26.', 'Di 27.', 'Mi 28.', 'Do 29.', 'Fr 30.'])
-    expect(markup).toContain('Projekt Nord ¾')
-    expect(markup).toContain('Routinen / Admin ¼')
-    expect(markup).toContain('Workshop Süd')
+    expect(days(markup)).toEqual(['Mo 26.', 'Di 27.', 'Mi 28.', 'Do 29.', 'Fr 30.'])
+    expect(markup).toContain('Vormittag')
+    expect(markup).toContain('<b>09:00</b> Jour fixe')
+    // the private appointment keeps its time, not its title, and sits in the afternoon
+    expect(markup).toContain('<b>13:00</b> Belegt')
+    expect(markup.indexOf('Jour fixe')).toBeLessThan(markup.indexOf('Belegt'))
+    expect(markup).toContain('Projekt Nord <b>¾</b>')
+    expect(markup).toContain('Routinen / Admin <b>¼</b>')
+    // a full-day workshop takes morning and afternoon together
+    expect(markup).toContain('<div class="zw-c zw-long"><div class="zw-e"><b>09:00–17:00</b> Workshop Süd')
     expect(markup).toContain('belegt')
     expect(markup).not.toContain('Umzug')
     expect(markup).toContain('KW 44')
-    expect([...markup_quadrant.matchAll(/class="z-wd"/g)]).toHaveLength(3)
+    expect(days(markup_quadrant)).toHaveLength(3)
+    expect(markup_quadrant).not.toContain('Vormittag')
     // Saturday and Sunday are skipped unless something is planned
     const friday = renderScreens('week', { ...STATE, blocks: [{ id: 'sun', date: '2026-11-01', projectId: 'p', size: 0.5 }] }, '2026-10-30', '08:15').markup
-    expect([...friday.matchAll(/class="z-day-h">([^<]+)</g)].map((m) => m[1])).toEqual(['Fr 30.', 'So 1.', 'Mo 2.', 'Di 3.', 'Mi 4.'])
+    expect(days(friday)).toEqual(['Fr 30.', 'So 1.', 'Mo 2.', 'Di 3.', 'Mi 4.'])
+  })
+
+  it('fits a crowded week without cutting any text', () => {
+    const crowded = {
+      ...STATE,
+      events: Array.from({ length: 40 }, (_, i) =>
+        event({ id: `m${i}`, title: `Besprechung mit einem recht langen Titel Nummer ${i}`, date: ['2026-10-26', '2026-10-27', '2026-10-29'][i % 3], start: `${String(8 + (i % 4)).padStart(2, '0')}:00`, end: `${String(9 + (i % 4)).padStart(2, '0')}:00` }),
+      ),
+    }
+    const { markup } = renderScreens('week', crowded, TODAY, '08:15')
+    expect(markup).toContain('weitere')
+    expect(markup).not.toContain('…')
+    // every title shown is shown whole
+    for (const m of markup.matchAll(/Besprechung mit[^<]*/g)) expect(m[0]).toMatch(/Nummer \d+$/)
+    // and the rows never ask for more height than the screen has (480 − title bar − padding)
+    const rows = /grid-template-rows:24px ([^"]+)"/.exec(markup)![1].split(' ').map((x) => parseInt(x))
+    expect(24 + rows.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(480 - 40 - 20)
+  })
+
+  it('estimates wrapped lines at word boundaries', () => {
+    expect(wrappedLines('kurz', 200)).toBe(1)
+    expect(wrappedLines('Vorbereitung Teamworkshop Nord', 150)).toBe(2)
+    expect(wrappedLines('Führungskräfteentwicklungsprogramm', 100)).toBe(3)
   })
 
   it('escapes HTML and Liquid', () => {

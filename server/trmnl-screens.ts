@@ -1,6 +1,6 @@
 import type { CalendarEvent, HHMM, ISODate, PlanBlock, Project, Settings, Task } from '../src/domain/types.ts'
 import { DEFAULT_SETTINGS } from '../src/domain/types.ts'
-import { addDaysISO, compareISO, fmtDate, fmtHours, fmtTime, fmtWeekday, hhmmToMinutes, isoWeekNumber, minutesToHHMM } from '../src/domain/dates.ts'
+import { addDaysISO, compareISO, durationMinutes, fmtDate, fmtHours, fmtTime, fmtWeekday, hhmmToMinutes, isoWeekNumber, minutesToHHMM } from '../src/domain/dates.ts'
 import {
   blocksOn,
   candidatesForDay,
@@ -17,6 +17,7 @@ import {
   sortTasks,
   tasksPlannedOn,
   visibleBlocks,
+  WORKSHOP_FULL_DAY_MINUTES,
 } from '../src/domain/selectors.ts'
 import { translator, type Translate } from './i18n.ts'
 
@@ -98,14 +99,13 @@ const STYLE = `<style>
 .z-short{font-size:13px;padding-top:0;padding-bottom:0;align-items:center}
 .z-now{position:absolute;left:-44px;right:0;border-top:3px dashed #000}
 .z-now span{position:absolute;right:0;top:-20px;font-size:13px;background:#fff;padding:0 4px}
-.z-days{display:flex;flex:1;min-height:0;gap:8px}
-.z-day{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:16px}
-.z-day-h{font-weight:700;font-size:18px;padding:2px 6px;border:2px solid #000;border-radius:4px}
-.z-today .z-day-h{background:#000;color:#fff}
-.z-bar{height:12px;border:2px solid #000;border-radius:3px;overflow:hidden}.z-bar i{display:block;height:100%;background:#000}
-.z-day .z-t{flex:none;font-size:16px}.z-strong{font-weight:700}
-.z-wrow{display:flex;align-items:center;gap:8px;min-height:30px;border-bottom:1px solid #000;font-size:16px}
-.z-wrow:last-child{border-bottom:0}.z-wrow .z-bar{flex:none;width:60px}.z-wd{flex:none;width:64px;font-weight:700}
+.zw{flex:1;min-height:0;display:grid;column-gap:12px;font-size:14px;line-height:17px}
+.zw-h{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;align-self:end;padding-bottom:3px}
+.zw-c{border-top:1px solid #000;padding:4px 0;overflow:hidden;min-width:0;hyphens:auto;overflow-wrap:anywhere}.zw-long{grid-column:span 2}
+.zw-e{padding-left:10px;text-indent:-10px}.zw-e b{font-weight:700}.zw-long .zw-e:first-child{font-weight:700}
+.zw-d b{font-size:17px;line-height:21px}.zw-d span{display:block;font-size:13px;line-height:17px}.zw-tight{font-weight:700}
+.zw-today b{display:inline-block;background:#000;color:#fff;border-radius:4px;padding:0 5px}
+.zw-more{font-size:13px}
 </style>`
 
 interface Ctx {
@@ -116,8 +116,8 @@ interface Ctx {
   now: HHMM
 }
 
-function screen(title: string, instance: string, body: string): string {
-  return `${STYLE}<div class="layout layout--col layout--top layout--left layout--stretch"><div class="z">${body}</div></div>` +
+function screen(lang: string, title: string, instance: string, body: string): string {
+  return `${STYLE}<div class="layout layout--col layout--top layout--left layout--stretch"><div class="z" lang="${esc(lang)}">${body}</div></div>` +
     `<div class="title_bar"><span class="title">${esc(title)}</span><span class="instance">${esc(instance)}</span></div>`
 }
 
@@ -299,57 +299,139 @@ function fmtSize(size: number): string {
   return `${whole || !frac ? whole : ''}${frac}`
 }
 
-function dayInfo(c: Ctx, date: ISODate) {
-  const { d, t } = c
+// Morning and afternoon split at noon by start time; a meeting from 11:30 belongs to the morning.
+const NOON = 12 * 60
+/** Inter's average glyph width in em, a little generous so the estimate errs towards wrapping. */
+const CHAR_EM = 0.56
+const WEEK_FONT = 14
+const WEEK_LINE = 17
+
+/** Lines a text takes when wrapped at word boundaries into `width` px at `font` px (an estimate). */
+export function wrappedLines(text: string, width: number, font = WEEK_FONT): number {
+  const perLine = Math.max(1, Math.floor(width / (font * CHAR_EM)))
+  let lines = 1
+  let used = 0
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (used && used + 1 + word.length <= perLine) {
+      used += 1 + word.length
+      continue
+    }
+    if (used) lines++
+    const extra = Math.ceil(word.length / perLine) - 1
+    lines += extra
+    used = word.length - extra * perLine
+  }
+  return lines
+}
+
+interface Entry {
+  text: string
+  html: string
+}
+
+/**
+ * Entries that fit into `maxLines` wrapped lines, never cut mid-text: what does not fit is counted
+ * in a "+ n more" line instead. A single entry longer than the whole cell is still shown.
+ */
+function fit(entries: Entry[], width: number, maxLines: number, t: Translate): string {
+  const need = entries.map((e) => wrappedLines(e.text, width))
+  if (need.reduce((a, b) => a + b, 0) <= maxLines) return entries.map((e) => e.html).join('')
+  let shown = 0
+  let used = 0
+  while (shown < entries.length && used + need[shown] <= maxLines - 1) used += need[shown++]
+  shown = Math.max(shown, 1)
+  const rest = entries.length - shown
+  return entries.slice(0, shown).map((e) => e.html).join('') + (rest ? `<div class="zw-more">${esc(t('trmnl.more', { count: rest }))}</div>` : '')
+}
+
+function dayPlan(c: Ctx, date: ISODate) {
+  const { d, t, locale } = c
   const cap = dayCapacity(date, d.settings, d.events, d.blocks, d.tasks)
-  const used = cap.fullDay ? 1 : cap.workMinutes ? Math.min(1, (cap.uncoveredMeetingMinutes + cap.blockMinutes) / cap.workMinutes) : 0
   const status = cap.fullDay
     ? t('week.fullDayShort')
     : isOverplanned(cap)
       ? t('week.overplanned')
       : cap.isWorkDay
-        ? t('week.free', { hours: fmtHours(cap.freeMinutes, c.locale) })
+        ? t('week.free', { hours: fmtHours(cap.freeMinutes, locale) })
         : t('week.offDay')
-  // One line per project, however many blocks it has that day.
+  const events = eventsOn(d.events, date).filter(isBlocking)
+  // All-day appointments and full-day workshops take the whole row instead of morning and afternoon.
+  const takesDay = (e: CalendarEvent) => !!e.allDay || (e.kind === 'workshop' && durationMinutes(e.start, e.end) >= WORKSHOP_FULL_DAY_MINUTES)
+  const entry = (e: CalendarEvent, range = false): Entry => {
+    const time = e.allDay ? '' : range ? `${fmtTime(e.start, locale)}–${fmtTime(e.end, locale)}` : fmtTime(e.start, locale)
+    return { text: `${time} ${e.title}`.trim(), html: `<div class="zw-e">${time ? `<b>${esc(time)}</b> ` : ''}${esc(e.title)}</div>` }
+  }
+  const long = events.filter(takesDay)
+  const rest = events.filter((e) => !takesDay(e))
+  // One entry per project, however many blocks it has that day.
   const sizes = new Map<string | null, number>()
   for (const b of blocksOn(d.blocks, date)) sizes.set(b.projectId, (sizes.get(b.projectId) ?? 0) + b.size)
-  const blocks = [...sizes].map(([id, size]) => `${id ? (d.projects.find((p) => p.id === id)?.name ?? '') : t('week.chores')} ${fmtSize(size)}`)
-  const events = eventsOn(d.events, date).filter(isBlocking)
-  // Appointments that take the day (or half of it) are named; the rest are counted.
-  const big = events.filter((e) => e.allDay || e.kind === 'workshop')
-  const meetings = events.length - big.length
-  // "Mo 26." / "Mon 26": the weekday without its abbreviation dot; German writes the day as an ordinal.
-  const label = `${fmtWeekday(date, c.locale).replace(/\.$/, '')} ${fmtDate(date, c.locale, { day: 'numeric' })}${c.locale === 'de' ? '.' : ''}`
-  return { used, status, blocks, big: big.map((e) => e.title), meetings, label }
-}
-
-const bar = (used: number) => `<div class="z-bar"><i style="width:${Math.round(used * 100)}%"></i></div>`
-
-function weekColumns(c: Ctx, days: number, maxLines: number): string {
-  const cols = weekDays(c, days).map((date) => {
-    const x = dayInfo(c, date)
-    const lines = [
-      ...x.big.map((title) => `<span class="z-t z-strong">${esc(title)}</span>`),
-      ...x.blocks.map((b) => `<span class="z-t">${esc(b)}</span>`),
-      ...(x.meetings ? [`<span class="z-t">${esc(c.t('trmnl.meetings', { count: x.meetings }))}</span>`] : []),
-    ]
-    const shown = lines.length > maxLines ? [...lines.slice(0, maxLines - 1), `<span class="z-t">${esc(c.t('trmnl.more', { count: lines.length - maxLines + 1 }))}</span>`] : lines
-    return `<div class="z-day${date === c.today ? ' z-today' : ''}"><div class="z-day-h">${esc(x.label)}</div>${bar(x.used)}<span>${esc(x.status)}</span>${shown.join('')}</div>`
+  const focus = [...sizes].map(([id, size]): Entry => {
+    const name = id ? (d.projects.find((p) => p.id === id)?.name ?? '') : t('week.chores')
+    return { text: `${name} ${fmtSize(size)}`, html: `<div class="zw-e">${esc(name)} <b>${esc(fmtSize(size))}</b></div>` }
   })
-  return `<div class="z-days">${cols.join('')}</div>`
+  // "Mo 26." / "Mon 26": the weekday without its abbreviation dot; German writes the day as an ordinal.
+  const label = `${fmtWeekday(date, locale).replace(/\.$/, '')} ${fmtDate(date, locale, { day: 'numeric' })}${locale === 'de' ? '.' : ''}`
+  return {
+    label,
+    status,
+    tight: cap.fullDay || isOverplanned(cap),
+    free: cap.isWorkDay && !cap.fullDay ? cap.freeMinutes : 0,
+    long: long.length ? [...long.map((e) => entry(e, true)), ...rest.map((e) => entry(e))] : null,
+    morning: rest.filter((e) => hhmmToMinutes(e.start) < NOON).map((e) => entry(e)),
+    afternoon: rest.filter((e) => hhmmToMinutes(e.start) >= NOON).map((e) => entry(e)),
+    focus,
+  }
 }
 
-function weekRows(c: Ctx, days: number): string {
-  return weekDays(c, days)
-    .map((date) => {
-      const x = dayInfo(c, date)
-      const what = [...x.big, ...x.blocks].join(' · ')
-      return `<div class="z-wrow"><span class="z-wd">${esc(x.label)}</span>${bar(x.used)}<span class="z-t">${esc(what)}</span><span class="z-r">${esc(x.status)}</span></div>`
-    })
-    .join('')
+/**
+ * The week as a table: one row per day with what is left, the morning's and the afternoon's
+ * appointments and the plan blocks (focus). Sizes are those of the TRMNL view, so the text estimate
+ * knows how much fits: each row gets the lines it needs, and only when the week does not fit are the
+ * fullest rows shortened (their cells then end in "+ n more"). Without `halves` (half a screen wide)
+ * only day and focus remain.
+ */
+function weekTable(c: Ctx, days: ISODate[], view: { width: number; height: number; halves: boolean }): string {
+  const DAY = 88
+  const FOCUS = 160
+  const GAP = 12
+  const ROW_PAD = 9 // padding and the rule above each row
+  const INDENT = 10 // continuation lines are indented, so wrapped entries stay apart
+  const inner = view.width - 20
+  const half = Math.floor((inner - DAY - FOCUS - 3 * GAP) / 2)
+  const focusWidth = view.halves ? FOCUS : inner - DAY - GAP
+  const plans = days.map((date) => ({ date, x: dayPlan(c, date) }))
+  const cellsOf = ({ x }: (typeof plans)[number]): { entries: Entry[]; width: number; span?: boolean }[] => [
+    ...(!view.halves ? [] : x.long ? [{ entries: x.long, width: 2 * half + GAP, span: true }] : [{ entries: x.morning, width: half }, { entries: x.afternoon, width: half }]),
+    { entries: x.focus, width: focusWidth },
+  ]
+  const lines = (e: Entry[], width: number) => e.reduce((sum, x) => sum + wrappedLines(x.text, width - INDENT), 0)
+  // Two lines at least: the day and what is left of it.
+  const budgets = plans.map((p) => Math.max(2, ...cellsOf(p).map((cell) => lines(cell.entries, cell.width))))
+  const available = Math.floor((view.height - 40 - 20 - 24 - days.length * ROW_PAD) / WEEK_LINE)
+  while (budgets.reduce((a, b) => a + b, 0) > available) {
+    const i = budgets.indexOf(Math.max(...budgets))
+    if (budgets[i] <= 2) break
+    budgets[i]--
+  }
+  const t = c.t
+  const cols = view.halves ? `${DAY}px 1fr 1fr ${FOCUS}px` : `${DAY}px 1fr`
+  const rows = budgets.map((b) => `${b * WEEK_LINE + ROW_PAD}px`).join(' ')
+  let html = `<div class="zw" style="grid-template-columns:${cols};grid-template-rows:24px ${rows}"><div class="zw-h"></div>`
+  if (view.halves) html += `<div class="zw-h">${esc(t('trmnl.morning'))}</div><div class="zw-h">${esc(t('trmnl.afternoon'))}</div>`
+  html += `<div class="zw-h">${esc(t('trmnl.focus'))}</div>`
+  plans.forEach((p, i) => {
+    const { date, x } = p
+    html += `<div class="zw-c zw-d${date === c.today ? ' zw-today' : ''}"><b>${esc(x.label)}</b><span${x.tight ? ' class="zw-tight"' : ''}>${esc(x.status)}</span></div>`
+    for (const cell of cellsOf(p)) html += `<div class="zw-c${cell.span ? ' zw-long' : ''}">${fit(cell.entries, cell.width - INDENT, budgets[i], t)}</div>`
+  })
+  return html + '</div>'
 }
 
-const weekTitle = (c: Ctx) => `${c.t('week.weekLabel', { week: isoWeekNumber(c.today) })} · ${updated(c)}`
+function weekTitle(c: Ctx, days: ISODate[]): string {
+  const free = days.reduce((sum, date) => sum + dayPlan(c, date).free, 0)
+  return `${c.t('week.weekLabel', { week: isoWeekNumber(c.today) })} · ${c.t('week.free', { hours: fmtHours(free, c.locale) })} · ${updated(c)}`
+}
 
 // ---------- entry ----------
 
@@ -360,26 +442,28 @@ export function renderScreens(view: TrmnlView, state: DisplayState, today: ISODa
   if (view === 'todos') {
     const title = t('trmnl.todos')
     return {
-      markup: screen(title, updated(c), todos(c, 11, false)),
-      markup_half_vertical: screen(title, updated(c), todos(c, 11, true)),
-      markup_half_horizontal: screen(title, updated(c), todos(c, 5, false)),
-      markup_quadrant: screen(title, updated(c), todos(c, 5, true)),
+      markup: screen(locale, title, updated(c), todos(c, 11, false)),
+      markup_half_vertical: screen(locale, title, updated(c), todos(c, 11, true)),
+      markup_half_horizontal: screen(locale, title, updated(c), todos(c, 5, false)),
+      markup_quadrant: screen(locale, title, updated(c), todos(c, 5, true)),
     }
   }
   if (view === 'schedule') {
     const title = t('trmnl.schedule')
     return {
-      markup: screen(title, updated(c), schedule(c)),
-      markup_half_vertical: screen(title, updated(c), schedule(c, true)),
-      markup_half_horizontal: screen(title, updated(c), scheduleList(c, 5)),
-      markup_quadrant: screen(title, updated(c), scheduleList(c, 5)),
+      markup: screen(locale, title, updated(c), schedule(c)),
+      markup_half_vertical: screen(locale, title, updated(c), schedule(c, true)),
+      markup_half_horizontal: screen(locale, title, updated(c), scheduleList(c, 5)),
+      markup_quadrant: screen(locale, title, updated(c), scheduleList(c, 5)),
     }
   }
   const title = t('trmnl.week')
+  const five = weekDays(c, 5)
+  const three = five.slice(0, 3)
   return {
-    markup: screen(title, weekTitle(c), weekColumns(c, 5, 6)),
-    markup_half_horizontal: screen(title, weekTitle(c), weekColumns(c, 5, 2)),
-    markup_half_vertical: screen(title, weekTitle(c), weekRows(c, 5)),
-    markup_quadrant: screen(title, weekTitle(c), weekRows(c, 3)),
+    markup: screen(locale, title, weekTitle(c, five), weekTable(c, five, { width: 800, height: 480, halves: true })),
+    markup_half_horizontal: screen(locale, title, weekTitle(c, three), weekTable(c, three, { width: 800, height: 240, halves: true })),
+    markup_half_vertical: screen(locale, title, weekTitle(c, five), weekTable(c, five, { width: 400, height: 480, halves: false })),
+    markup_quadrant: screen(locale, title, weekTitle(c, three), weekTable(c, three, { width: 400, height: 240, halves: false })),
   }
 }
