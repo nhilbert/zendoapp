@@ -44,13 +44,13 @@ const STATE: DisplayState = {
 describe('TRMNL screens', () => {
   it('lists today’s open to-dos, deadlines and the week plan’s next steps, never private ones', () => {
     const { markup, markup_quadrant } = renderScreens('todos', STATE, TODAY, '08:15')
-    for (const title of ['Angebot Nord', 'Rechnung an Kunde C', 'Lieferant anrufen', 'Liegengeblieben', 'Projekt West · Interviewfragen', 'Heute fällig', 'Aus dem Wochenplan', 'Stand 08:15', 'Montag, 26. Oktober']) expect(markup).toContain(title)
+    for (const title of ['Angebot Nord', 'Rechnung an Kunde C', 'Lieferant anrufen', 'Liegengeblieben', 'Interviewfragen</span><span class="z-proj">Projekt West', 'Heute fällig', 'Aus dem Wochenplan', 'Stand 08:15', 'Montag, 26. Oktober']) expect(markup).toContain(title)
     for (const hidden of ['Erledigt', 'Wohnung', 'Arzt', 'Umzug']) expect(markup).not.toContain(hidden)
     expect(markup.indexOf('Angebot Nord')).toBeLessThan(markup.indexOf('Folien'))
     // TRMNL runs the markup through Liquid: braces from the data must not reach it
     expect(markup).toContain('Folien &#123;&#123; prüfen &#125;&#125;')
     expect(markup).not.toMatch(/\{\{|\{%/)
-    expect(markup_quadrant).not.toContain('<small>')
+    expect(markup_quadrant).not.toContain('class="z-proj"')
   })
 
   it('cuts long lists and says how many more there are', () => {

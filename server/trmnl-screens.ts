@@ -83,7 +83,7 @@ const STYLE = `<style>
 .z-box{flex:none;width:16px;height:16px;border:2px solid #000;border-radius:3px}
 .z-ring{flex:none;width:16px;height:16px;border:2px solid #000;border-radius:50%}
 .z-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.z-t small{font-size:15px;margin-left:8px}
+.z-proj{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .z-r{flex:none;font-size:16px;white-space:nowrap}
 .z-mark{flex:none;font-size:14px;font-weight:700;border:1.5px solid #000;border-radius:4px;padding:0 5px;white-space:nowrap}
 .z-sec{font-size:15px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-top:10px;padding-bottom:2px}
@@ -147,7 +147,7 @@ function todos(c: Ctx, maxRows: number, compact: boolean): string {
   const row = (task: Task, right?: string) => {
     const m = mark(task)
     const name = !compact && project(task.projectId)
-    return `<div class="z-row"><span class="z-box"></span><span class="z-t">${esc(task.title)}${name ? `<small>${esc(name)}</small>` : ''}</span>` +
+    return `<div class="z-row"><span class="z-box"></span><span class="z-t">${esc(task.title)}</span>${name ? `<span class="z-proj">${esc(name)}</span>` : ''}` +
       `${m ? `<span class="z-mark">${esc(m)}</span>` : ''}${right ? `<span class="z-r">${esc(right)}</span>` : ''}</div>`
   }
   const planned = tasksPlannedOn(d.tasks, today).filter(isOpen)
@@ -165,7 +165,9 @@ function todos(c: Ctx, maxRows: number, compact: boolean): string {
     ...cands.due.map((x) => row(x)),
   ]
   const next = cands.fromBlocks.map(({ project: p, task }) =>
-    `<div class="z-row"><span class="z-ring"></span><span class="z-t">${task ? `${esc(p.name)} · ${esc(task.title)}` : esc(t('today.nextMissing', { project: p.name }))}</span></div>`,
+    task
+      ? `<div class="z-row"><span class="z-ring"></span><span class="z-t">${esc(task.title)}</span>${compact ? '' : `<span class="z-proj">${esc(p.name)}</span>`}</div>`
+      : `<div class="z-row"><span class="z-ring"></span><span class="z-t">${esc(t('today.nextMissing', { project: p.name }))}</span></div>`,
   )
   const cap = dayCapacity(today, d.settings, d.events, d.blocks, d.tasks)
   let body = compact ? '' : head(longDate(c), t('week.planned', { hours: fmtHours(cap.plannedTaskMinutes, c.locale) }))
