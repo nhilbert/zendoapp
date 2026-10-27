@@ -30,6 +30,89 @@ describe('Repo', () => {
     expect(second.previousChangedAt).toBe(stamp1)
     expect(repo.changedAt()! > stamp1).toBe(true) // also within the same millisecond
   })
+  describe('merging changes sent with a base', () => {
+    const task = { id: 't1', title: 'Send offer', status: 'next', projectId: 'p1', plannedDate: '2026-10-29', notes: [], updatedAt: '2026-10-27T08:00:00.000Z' }
+    const seeded = () => {
+      const repo = fresh()
+      repo.applyChanges({ upserts: { tasks: [task] } })
+      return repo
+    }
+    const at = (iso: string) => ({ record: task, editedAt: iso })
+    const stored = (repo: Repo, id = 't1') => repo.loadState().tasks.find((t) => t.id === id)
+
+    it('writes as sent when nobody changed the record since', () => {
+      const repo = seeded()
+      const r = repo.applyChanges({ upserts: { tasks: [{ ...task, title: 'new' }] }, bases: { tasks: { t1: at('2026-10-27T09:00:00.000Z') } } })
+      expect(stored(repo)!.title).toBe('new')
+      expect(r).toMatchObject({ adjusted: 0, replaced: [] })
+    })
+    it('merges an offline edit with a change made elsewhere instead of overwriting it', () => {
+      const repo = seeded()
+      repo.applyChanges({ upserts: { tasks: [{ ...task, status: 'done', completedAt: '2026-10-27T10:40:00.000Z' }] } }) // the phone, without base
+      const r = repo.applyChanges({ upserts: { tasks: [{ ...task, title: 'Send offer to Jana' }] }, bases: { tasks: { t1: at('2026-10-27T09:12:00.000Z') } } })
+      expect(stored(repo)).toMatchObject({ title: 'Send offer to Jana', status: 'done', completedAt: '2026-10-27T10:40:00.000Z' })
+      expect(r.adjusted).toBe(1)
+      expect(r.replaced).toEqual([])
+    })
+    it('lets the later edit win a field changed on both sides and reports the replaced value', () => {
+      const repo = seeded()
+      repo.applyChanges({ upserts: { tasks: [{ ...task, plannedDate: '2026-11-02' }] } }) // written now, i.e. after the offline edit
+      const r = repo.applyChanges({ upserts: { tasks: [{ ...task, plannedDate: '2026-10-30' }] }, bases: { tasks: { t1: at('2026-10-27T09:12:00.000Z') } } })
+      expect(stored(repo)!.plannedDate).toBe('2026-11-02')
+      expect(r.replaced).toEqual([
+        expect.objectContaining({ collection: 'tasks', id: 't1', label: 'Send offer', kind: 'field', from: 'browser', replaced: { plannedDate: '2026-10-30' }, replacedAt: '2026-10-27T09:12:00.000Z' }),
+      ])
+    })
+    it('keeps a record deleted here but changed elsewhere, and one deleted elsewhere but changed here', () => {
+      const repo = seeded()
+      repo.applyChanges({ upserts: { tasks: [{ ...task, title: 'changed on the phone' }] } })
+      const del = repo.applyChanges({ deletes: { tasks: ['t1'] }, bases: { tasks: { t1: at('2026-10-27T09:00:00.000Z') } } })
+      expect(stored(repo)!.title).toBe('changed on the phone')
+      expect(del.replaced).toEqual([expect.objectContaining({ kind: 'kept', from: 'browser' })])
+
+      const repo2 = seeded()
+      repo2.applyChanges({ deletes: { tasks: ['t1'] } })
+      const up = repo2.applyChanges({ upserts: { tasks: [{ ...task, title: 'edited offline' }] }, bases: { tasks: { t1: at('2026-10-27T09:00:00.000Z') } } })
+      expect(stored(repo2)!.title).toBe('edited offline')
+      expect(up.replaced).toEqual([expect.objectContaining({ kind: 'kept', from: 'server' })])
+    })
+    it('deletes as asked when the record is unchanged, and leaves a meeting the calendar import removed gone', () => {
+      const repo = seeded()
+      repo.applyChanges({ deletes: { tasks: ['t1'] }, bases: { tasks: { t1: at('2026-10-27T09:00:00.000Z') } } })
+      expect(stored(repo)).toBeUndefined()
+      const meeting = { id: 'e1', title: 'Jour fixe', date: '2026-10-28', source: 'm365' }
+      repo.applyChanges({ upserts: { events: [meeting] } })
+      repo.applyChanges({ deletes: { events: ['e1'] } }) // the calendar sync
+      const r = repo.applyChanges({ upserts: { events: [{ ...meeting, projectId: 'p1' }] }, bases: { events: { e1: { record: meeting, editedAt: '2026-10-27T09:00:00.000Z' } } } })
+      expect(repo.loadState().events).toEqual([])
+      expect(r.adjusted).toBe(1)
+    })
+    it('keeps one next action per project when two devices each picked one', () => {
+      const repo = seeded()
+      repo.applyChanges({ upserts: { tasks: [{ ...task, id: 't2', title: 'Book room', status: 'next', updatedAt: '2026-10-27T10:40:00.000Z' }, { ...task, status: 'todo' }] } })
+      const base2 = { ...task, id: 't3', status: 'todo' }
+      repo.applyChanges({ upserts: { tasks: [base2] } })
+      const r = repo.applyChanges({
+        upserts: { tasks: [{ ...base2, status: 'next', updatedAt: '2026-10-27T09:12:00.000Z' }] },
+        bases: { tasks: { t3: { record: base2, editedAt: '2026-10-27T09:12:00.000Z' } } },
+      })
+      const next = repo.loadState().tasks.filter((t) => t.status === 'next').map((t) => t.id)
+      expect(next).toEqual(['t2'])
+      expect(r.replaced).toEqual([expect.objectContaining({ id: 't3', from: 'browser', kept: { status: 'todo' }, replaced: { status: 'next' } })])
+    })
+    it('treats an edit time from the future as now', () => {
+      const repo = seeded()
+      repo.applyChanges({ upserts: { tasks: [{ ...task, plannedDate: '2026-11-02' }] } })
+      const r = repo.applyChanges({ upserts: { tasks: [{ ...task, plannedDate: '2026-10-30' }] }, bases: { tasks: { t1: at('2999-01-01T00:00:00.000Z') } } })
+      expect(stored(repo)!.plannedDate).toBe('2026-10-30')
+      expect(r.replaced[0].from).toBe('server')
+    })
+    it('rejects malformed bases', () => {
+      expect(() => validateChanges({ bases: { tasks: { t1: { record: task } } } })).toThrow(BadRequest)
+      expect(() => validateChanges({ bases: { nope: {} } })).toThrow(BadRequest)
+      expect(() => validateChanges({ bases: { tasks: { t1: { record: null, editedAt: '2026-10-27T09:00:00.000Z' } } } })).not.toThrow()
+    })
+  })
   it('replaceAll migrates old snapshots', () => {
     const repo = fresh()
     repo.applyChanges({ upserts: { inbox: [{ id: 'old', text: 'gone' }] } })

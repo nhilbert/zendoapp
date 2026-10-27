@@ -492,7 +492,22 @@
     "conflictBackup": "Eine Kopie der Daten dieses Browsers wurde gesichert; du kannst sie später unter Einstellungen → Daten herunterladen.",
     "keepBrowser": "Daten dieses Browsers behalten und den Server ersetzen",
     "keepServer": "Daten des Servers übernehmen und diesen Browser ersetzen",
-    "downloadBackup": "Kopie von vor der ersten Synchronisierung herunterladen"
+    "downloadBackup": "Kopie von vor der ersten Synchronisierung herunterladen",
+    "replacedShort_one": "1 Änderung ersetzt – ansehen",
+    "replacedShort_other": "{{count}} Änderungen ersetzt – ansehen",
+    "replacedTitle": "Ersetzte Änderungen",
+    "replacedBy": "ersetzt: {{value}} ({{side}}, {{time}})",
+    "sideBrowser": "dieser Browser",
+    "sideServer": "Server",
+    "restoreValue": "{{value}} wiederherstellen",
+    "restore": "Wiederherstellen",
+    "fine": "Gut so",
+    "keptDeletedHere": "In diesem Browser gelöscht, anderswo inzwischen geändert – deshalb behalten.",
+    "keptDeletedThere": "Anderswo gelöscht, in diesem Browser geändert – deshalb behalten.",
+    "deleteAnyway": "Doch löschen",
+    "fieldText": "Text",
+    "fieldSize": "Umfang",
+    "fieldNote": "Notiz"
   },
   "focus": {
     "label": "Fokus",

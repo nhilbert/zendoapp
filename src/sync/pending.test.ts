@@ -23,6 +23,8 @@ const server = {
   posts: 0,
   puts: 0,
   release: null as null | ((r: Response) => void),
+  /** runs after a POST was applied (e.g. a merge on the server), its result is added to the answer */
+  onPost: null as null | (() => Record<string, unknown>),
 }
 /** A write by somebody else (an agent, the calendar job, another device). */
 const outsideWrite = (t: { id: string; title: string }) => {
@@ -57,7 +59,7 @@ vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     for (const id of ch.deletes?.tasks ?? []) server.tasks = server.tasks.filter((x) => x.id !== id)
     server.posts += 1
     server.changedAt = new Date(Date.parse(server.changedAt) + 1000).toISOString()
-    return Response.json({ ok: true, changedAt: server.changedAt, previousChangedAt })
+    return Response.json({ ok: true, changedAt: server.changedAt, previousChangedAt, ...server.onPost?.() })
   }
   return new Response('{}', { status: 404 })
 })
@@ -74,6 +76,7 @@ beforeEach(() => {
   useSync.setState({ status: 'connecting', pending: 0, message: undefined })
   server.mode = 'ok'
   server.release = null
+  server.onPost = null
 })
 
 const ids = (xs: { id: string }[]) => xs.map((x) => x.id).sort()
@@ -230,5 +233,55 @@ describe('helpers', () => {
     const c = { ...base, tasks: [{ id: 'y', title: 'u' }, { id: 'x', title: 't', status: 'done' }] } as never
     expect(mod.sameContent(a, b)).toBe(true)
     expect(mod.sameContent(a, c)).toBe(false)
+  })
+})
+
+describe('merges on the server', () => {
+  const titles = () => Object.fromEntries(useStore.getState().tasks.map((t) => [t.id, t.title]))
+  const online = async () => {
+    useStore.getState().clearAll()
+    server.tasks = [{ id: 'm1', title: 'start' }]
+    localStorage.removeItem(mod.PENDING_CHANGES)
+    localStorage.removeItem(mod.REPLACED)
+    localStorage.setItem(mod.FLAG_SYNCED, '1')
+    const stop = mod.startSync()
+    await vi.waitFor(() => expect(useSync.getState().status).toBe('online'))
+    return stop
+  }
+
+  it('sends the version each record started from, the first one while edits pile up', async () => {
+    const stop = await online()
+    server.mode = 'login'
+    addTask('m1', 'edit 1')
+    addTask('m2', 'new here')
+    await vi.waitFor(() => expect(useSync.getState().status).toBe('signin'), { timeout: 3000 })
+    addTask('m1', 'edit 2')
+    addTask('m2', 'new here, edited')
+    stop()
+    const bases = pending().bases?.tasks ?? {}
+    expect(bases.m1.record).toEqual({ id: 'm1', title: 'start' })
+    expect(bases.m2.record).toBeNull()
+    expect(pending().upserts.tasks).toEqual(expect.arrayContaining([{ id: 'm1', title: 'edit 2' }]))
+  })
+
+  it('keeps what a merge replaced across reloads and undoes it through the store', async () => {
+    const stop = await online()
+    const report = { collection: 'tasks', id: 'm1', label: 'by the phone', kind: 'field', from: 'browser', fields: ['title'], kept: { title: 'by the phone' }, replaced: { title: 'mine' }, replacedAt: '2026-10-27T09:12:00.000Z' }
+    server.onPost = () => {
+      server.onPost = null
+      server.tasks = server.tasks.map((t) => (t.id === 'm1' ? { ...t, title: 'by the phone' } : t)) // the later edit won
+      return { adjusted: 1, replaced: [report] }
+    }
+    addTask('m1', 'mine')
+    await vi.waitFor(() => expect(titles()).toEqual({ m1: 'by the phone' }), { timeout: 3000 }) // pulled after the merge
+    expect(useSync.getState().replaced).toEqual([report])
+    expect(JSON.parse(localStorage.getItem(mod.REPLACED)!)).toEqual([report])
+
+    mod.restoreReplaced(useSync.getState().replaced[0])
+    expect(titles()).toEqual({ m1: 'mine' })
+    await vi.waitFor(() => expect(server.tasks).toEqual([{ id: 'm1', title: 'mine' }]), { timeout: 3000 })
+    expect(useSync.getState().replaced).toEqual([])
+    expect(localStorage.getItem(mod.REPLACED)).toBeNull()
+    stop()
   })
 })

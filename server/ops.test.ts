@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openDb } from './db.ts'
 import { Repo } from './repo.ts'
 import { Ops } from './ops.ts'
@@ -35,7 +35,12 @@ describe('Ops', () => {
     expect(() => ops.taskCreate({ title: 'x', project: 'nope' })).toThrow(/no project/)
   })
 
+  afterEach(() => void vi.useRealTimers())
+
   it('completes recurring tasks with a next occurrence and hints at a missing next action', () => {
+    // The recurrence rule keeps the next occurrence after the real today: pin the clock to TODAY.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(`${TODAY}T09:00:00`))
     const { repo, ops } = setup()
     ops.projectCreate({ name: 'P', nextAction: 'Only step' })
     const only = tasks(repo).find((t) => t.title === 'Only step')!

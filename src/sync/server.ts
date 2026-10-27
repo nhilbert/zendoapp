@@ -1,7 +1,9 @@
 import type { CalendarEvent, InboxItem, PlanBlock, Project, Review, Settings, Task } from '@/domain/types'
 import { useStore, type DataSnapshot } from '@/store/useStore'
-import { useSync, type Counts } from '@/store/useSync'
+import { useSync, type Counts, type Replaced } from '@/store/useSync'
 import { looksLikeSample } from '@/domain/sample'
+import { canonical } from '@/domain/merge'
+import { withSingleNext } from '@/domain/taskRules'
 import { NotConfigured, ServiceUnavailable, SignInRequired, api } from './api'
 
 /**
@@ -14,6 +16,9 @@ import { NotConfigured, ServiceUnavailable, SignInRequired, api } from './api'
  *    which stamp it replaced on the server: when that is not the state this browser holds, somebody
  *    else wrote in between (an agent, the calendar job, another device) and the state is pulled.
  *  - Pulled state never hides unconfirmed changes: they stay on top until the server has them.
+ *  - Each changed record carries the version it started from (its base), so the server merges it with
+ *    what changed there meanwhile (src/domain/merge.ts) instead of overwriting; what the merge decided
+ *    against one side is kept in useSync.replaced until the user has looked at it.
  * The browser cache (zustand persist) stays as an offline fallback.
  */
 export const COLLECTIONS = ['inbox', 'projects', 'tasks', 'events', 'blocks', 'reviews'] as const
@@ -29,10 +34,16 @@ export interface Collections {
   blocks: PlanBlock[]
   reviews: Review[]
 }
+/** The record as this browser knew it before its first unconfirmed edit (null = created here), and the time of the last edit. */
+export interface Base {
+  record: Identified | null
+  editedAt: string
+}
 export interface Changes {
   upserts: Partial<Record<Col, Identified[]>>
   deletes: Partial<Record<Col, string[]>>
   settings?: Settings
+  bases?: Partial<Record<Col, Record<string, Base>>>
 }
 interface ServerState extends Collections {
   version: number
@@ -70,13 +81,26 @@ export function diffCollections(prev: Collections, next: Collections): Changes |
   return any ? { upserts, deletes } : null
 }
 
-/** Pending changes merged per record: the latest upsert or delete of an id wins. */
+/** The bases of a change: each changed or deleted record as it was before (prev), edited now. */
+export function basesFor(prev: Collections, ch: Changes, editedAt: string): Changes['bases'] {
+  const out: NonNullable<Changes['bases']> = {}
+  for (const c of COLLECTIONS) {
+    const ids = [...(ch.upserts[c] ?? []).map((r) => r.id), ...(ch.deletes[c] ?? [])]
+    if (!ids.length) continue
+    const before = new Map((prev[c] as Identified[]).map((r) => [r.id, r]))
+    out[c] = Object.fromEntries(ids.map((id) => [id, { record: before.get(id) ?? null, editedAt }]))
+  }
+  return out
+}
+
+/** Pending changes merged per record: the latest upsert or delete of an id wins; its first base stays. */
 interface Queue {
   upserts: Map<Col, Map<string, Identified>>
   deletes: Map<Col, Set<string>>
+  bases: Map<Col, Map<string, Base>>
   settings?: Settings
 }
-const newQueue = (): Queue => ({ upserts: new Map(), deletes: new Map(), settings: undefined })
+const newQueue = (): Queue => ({ upserts: new Map(), deletes: new Map(), bases: new Map(), settings: undefined })
 const countQueue = (q: Queue) => [...q.upserts.values()].reduce((n, m) => n + m.size, 0) + [...q.deletes.values()].reduce((n, s) => n + s.size, 0) + (q.settings ? 1 : 0)
 function addToQueue(q: Queue, ch: Changes): void {
   for (const c of COLLECTIONS) {
@@ -91,6 +115,13 @@ function addToQueue(q: Queue, ch: Changes): void {
       q.upserts.get(c)?.delete(id)
     }
   }
+  for (const c of COLLECTIONS) {
+    for (const [id, base] of Object.entries(ch.bases?.[c] ?? {})) {
+      if (!q.bases.has(c)) q.bases.set(c, new Map())
+      const known = q.bases.get(c)!.get(id)
+      q.bases.get(c)!.set(id, known ? { record: known.record, editedAt: base.editedAt > known.editedAt ? base.editedAt : known.editedAt } : base)
+    }
+  }
   if (ch.settings) q.settings = ch.settings
 }
 function queueToChanges(q: Queue): Changes | null {
@@ -98,6 +129,11 @@ function queueToChanges(q: Queue): Changes | null {
   const out: Changes = { upserts: {}, deletes: {} }
   for (const [c, m] of q.upserts) if (m.size) out.upserts[c] = [...m.values()]
   for (const [c, s] of q.deletes) if (s.size) out.deletes[c] = [...s]
+  for (const [c, m] of q.bases) {
+    const queued = (id: string) => q.upserts.get(c)?.has(id) || q.deletes.get(c)?.has(id)
+    const entries = [...m].filter(([id]) => queued(id))
+    if (entries.length) (out.bases ??= {})[c] = Object.fromEntries(entries)
+  }
   if (q.settings) out.settings = q.settings
   return out
 }
@@ -125,6 +161,15 @@ export function readPending(raw: string | null): Changes {
     }
   }
   if (saved.settings && typeof saved.settings === 'object') out.settings = saved.settings
+  // Bases are an optimisation for the merge: a malformed one is dropped and that record simply overwrites.
+  for (const c of COLLECTIONS) {
+    const byId = saved.bases?.[c]
+    if (!byId || typeof byId !== 'object') continue
+    const ok = Object.entries(byId).filter(
+      ([, b]) => !!b && typeof b === 'object' && typeof b.editedAt === 'string' && (b.record === null || (!!b.record && typeof b.record === 'object' && typeof b.record.id === 'string')),
+    )
+    if (ok.length) (out.bases ??= {})[c] = Object.fromEntries(ok)
+  }
   return out
 }
 
@@ -167,20 +212,6 @@ const storage = {
 
 const counts = (s: { projects: unknown[]; tasks: unknown[]; inbox: unknown[] }): Counts => ({ projects: s.projects.length, tasks: s.tasks.length, inbox: s.inbox.length })
 
-/** JSON with sorted keys, so the same record compares equal however its keys were ordered. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
-  if (value && typeof value === 'object') {
-    const obj = value as Record<string, unknown>
-    return `{${Object.keys(obj)
-      .filter((k) => obj[k] !== undefined)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(value)
-}
-
 /** Do both hold the same records with the same content? Calendar events are left out: the server re-imports them. */
 export function sameContent(a: Collections, b: Collections): boolean {
   const key = (xs: Identified[]) => canonical([...xs].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)))
@@ -203,6 +234,66 @@ export const resolveConflict = (choice: 'browser' | 'server'): Promise<void> => 
 let refresher: (() => Promise<void>) | null = null
 /** Pull the server state now if it changed (used after server-side jobs such as a calendar sync). */
 export const refreshNow = (): Promise<void> => refresher?.() ?? Promise.resolve()
+
+/** What merges decided against one side, until the user has looked at it (kept across reloads). */
+export const REPLACED = 'zendo.replaced'
+const MAX_REPLACED = 30
+const saveReplaced = (list: Replaced[]) => {
+  if (list.length) storage.set(REPLACED, JSON.stringify(list))
+  else storage.remove(REPLACED)
+  useSync.getState().set({ replaced: list })
+}
+function loadReplaced(): Replaced[] {
+  try {
+    const list = JSON.parse(storage.get(REPLACED) ?? '[]') as Replaced[]
+    return Array.isArray(list) ? list.filter((r) => r && typeof r.id === 'string' && (COLLECTIONS as readonly string[]).includes(r.collection)) : []
+  } catch {
+    return []
+  }
+}
+/** Newest first; a newer report on the same values of a record replaces the older one. */
+function noteReplaced(incoming: Replaced[]): void {
+  const key = (r: Replaced) => `${r.collection}:${r.id}:${r.kind}:${(r.fields ?? []).join(',')}`
+  const fresh = new Set(incoming.map(key))
+  saveReplaced([...incoming, ...useSync.getState().replaced.filter((r) => !fresh.has(key(r)))].slice(0, MAX_REPLACED))
+}
+
+/** "Fine": forget a report. */
+export function dismissReplaced(r: Replaced): void {
+  saveReplaced(useSync.getState().replaced.filter((x) => x !== r))
+}
+
+/** Undo a merge decision through the store, so it syncs like any edit: restore the replaced values, or delete the kept record. */
+export function restoreReplaced(r: Replaced): void {
+  const s = useStore.getState()
+  if (r.kind === 'kept') {
+    if (r.collection === 'inbox') s.removeInboxItem(r.id)
+    else if (r.collection === 'projects') s.deleteProject(r.id)
+    else if (r.collection === 'tasks') s.deleteTask(r.id)
+    else if (r.collection === 'events') s.deleteEvent(r.id)
+    else if (r.collection === 'blocks') s.removeBlock(r.id)
+    else useStore.setState({ reviews: s.reviews.filter((x) => x.id !== r.id) })
+  } else {
+    const records = s[r.collection] as Identified[]
+    const target = records.find((x) => x.id === r.id) as (Identified & Record<string, unknown>) | undefined
+    if (target) {
+      const next: Identified & Record<string, unknown> = { ...target }
+      for (const f of r.fields ?? []) {
+        const v = r.replaced?.[f]
+        if (v === undefined) delete next[f]
+        else next[f] = v
+      }
+      if ('updatedAt' in target) next.updatedAt = new Date().toISOString()
+      let list = records.map((x) => (x.id === r.id ? next : x))
+      if (r.collection === 'tasks' && next.status === 'next') {
+        const task = next as unknown as Task
+        list = withSingleNext(list as Task[], task.id, task.projectId)
+      }
+      useStore.setState({ [r.collection]: list } as Partial<Collections>)
+    }
+  }
+  dismissReplaced(r)
+}
 
 export function startSync(): () => void {
   const sync = useSync.getState().set
@@ -243,6 +334,7 @@ export function startSync(): () => void {
   const clearQueue = () => {
     queue.upserts.clear()
     queue.deletes.clear()
+    queue.bases.clear()
     queue.settings = undefined
     persistPending()
   }
@@ -251,6 +343,7 @@ export function startSync(): () => void {
     const out = queueToChanges(queue)
     queue.upserts.clear()
     queue.deletes.clear()
+    queue.bases.clear()
     queue.settings = undefined
     return out
   }
@@ -333,10 +426,14 @@ export function startSync(): () => void {
       if (ch) {
         inflight = ch
         try {
-          const r = await api<{ changedAt: string; previousChangedAt?: string | null }>('/api/changes', { method: 'POST', body: JSON.stringify(ch) })
-          // Only this send since the state we hold: still up to date. Otherwise pull what the others wrote.
-          if (r.previousChangedAt === lastChangedAt) lastChangedAt = r.changedAt
+          const r = await api<{ changedAt: string; previousChangedAt?: string | null; adjusted?: number; replaced?: Replaced[] }>('/api/changes', {
+            method: 'POST',
+            body: JSON.stringify(ch),
+          })
+          // Only this send since the state we hold, stored as sent: still up to date. Otherwise pull what the others wrote.
+          if (r.previousChangedAt === lastChangedAt && !r.adjusted) lastChangedAt = r.changedAt
           else pullWanted = true
+          if (r.replaced?.length) noteReplaced(r.replaced)
           writes += 1
           inflight = null
           persistPending()
@@ -487,6 +584,7 @@ export function startSync(): () => void {
     const ch = diffCollections(prev, next) ?? { upserts: {}, deletes: {} }
     if (prev.settings !== next.settings) ch.settings = next.settings
     if (!Object.keys(ch.upserts).length && !Object.keys(ch.deletes).length && !ch.settings) return
+    ch.bases = basesFor(prev, ch, new Date().toISOString())
     enqueue(ch)
     if (useSync.getState().status === 'online') schedule()
   })
@@ -509,7 +607,7 @@ export function startSync(): () => void {
 
   // Changes the server never confirmed before the last reload go out first (handshake → flush).
   addToQueue(queue, readPending(storage.get(PENDING_CHANGES)))
-  sync({ pending: queued() })
+  sync({ pending: queued(), replaced: loadReplaced() })
 
   refresher = refresh
   const onFocus = () => void refresh()

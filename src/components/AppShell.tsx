@@ -9,6 +9,7 @@ import QuickCapture from './QuickCapture'
 import TaskDrawer from './TaskDrawer'
 import EventDialog from './EventDialog'
 import SyncConflictDialog from './SyncConflictDialog'
+import ReplacedDialog from './ReplacedDialog'
 import MobileNav from './MobileNav'
 import { Kbd, cx, isTyping } from './ui'
 
@@ -22,25 +23,36 @@ const NAV = [
   { to: '/review', key: 'nav.review', icon: BookOpen, shortcut: 'r' },
 ] as const
 
-/** Server trouble (offline, browser only, sign-in expired) stays visible, also in focus mode without the sidebar. */
+/**
+ * Server trouble (offline, browser only, sign-in expired) stays visible, also in focus mode without the sidebar;
+ * below it, quietly, the changes a sync merge replaced.
+ */
 function SyncNotice({ className }: { className?: string }) {
   const { t } = useTranslation()
   const syncStatus = useSync((s) => s.status)
-  if (syncStatus === 'offline' || syncStatus === 'local') {
-    return (
-      <NavLink to="/settings" className={cx('text-[12px] text-amber hover:underline', className)}>
+  const replaced = useSync((s) => s.replaced.length)
+  const openReplaced = useUi((s) => s.openReplaced)
+  const trouble =
+    syncStatus === 'offline' || syncStatus === 'local' ? (
+      <NavLink to="/settings" className="text-[12px] text-amber hover:underline">
         {t(`sync.${syncStatus}Short`)}
       </NavLink>
-    )
-  }
-  if (syncStatus === 'signin') {
-    return (
-      <button type="button" onClick={() => window.location.reload()} title={t('sync.signin')} className={cx('text-left text-[12px] text-amber hover:underline', className)}>
+    ) : syncStatus === 'signin' ? (
+      <button type="button" onClick={() => window.location.reload()} title={t('sync.signin')} className="text-left text-[12px] text-amber hover:underline">
         {t('sync.signinShort')}
       </button>
-    )
-  }
-  return null
+    ) : null
+  if (!trouble && !replaced) return null
+  return (
+    <div className={cx('flex flex-col items-start gap-1', className)}>
+      {trouble}
+      {replaced > 0 && (
+        <button type="button" onClick={openReplaced} className="text-left text-[12px] text-ink-3 hover:text-ink hover:underline">
+          {t('sync.replacedShort', { count: replaced })}
+        </button>
+      )}
+    </div>
+  )
 }
 
 export default function AppShell() {
@@ -163,6 +175,7 @@ export default function AppShell() {
       <TaskDrawer />
       <EventDialog />
       <SyncConflictDialog />
+      <ReplacedDialog />
     </div>
   )
 }

@@ -23,6 +23,8 @@ export default function MobileNav() {
   const hidePrivate = useStore((s) => !!s.settings.hidePrivate)
   const updateSettings = useStore((s) => s.updateSettings)
   const syncStatus = useSync((s) => s.status)
+  const replaced = useSync((s) => s.replaced.length)
+  const openReplaced = useUi((s) => s.openReplaced)
   const [moreOpen, setMoreOpen] = useState(false)
   useEffect(() => setMoreOpen(false), [location.pathname])
   const inMore = MORE.some((m) => location.pathname.startsWith(m.to))
@@ -57,6 +59,11 @@ export default function MobileNav() {
             </button>
             {(syncStatus === 'offline' || syncStatus === 'local' || syncStatus === 'conflict') && (
               <p className="px-3 pt-2 text-[13px] text-amber">{t(`sync.${syncStatus}Short`)}</p>
+            )}
+            {replaced > 0 && (
+              <button type="button" onClick={openReplaced} className="w-full px-3 pt-2 text-left text-[13px] text-ink-3">
+                {t('sync.replacedShort', { count: replaced })}
+              </button>
             )}
             {syncStatus === 'signin' && (
               <button type="button" onClick={() => window.location.reload()} className="w-full px-3 pt-2 text-left text-[13px] text-amber">

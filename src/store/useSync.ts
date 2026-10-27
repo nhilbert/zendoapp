@@ -17,17 +17,34 @@ export interface Counts {
   inbox: number
 }
 
+/** A merge decision against one side (from the server, see server/repo.ts Replaced); the user may undo it. */
+export interface Replaced {
+  collection: 'inbox' | 'projects' | 'tasks' | 'events' | 'blocks' | 'reviews'
+  id: string
+  label: string
+  /** field: the later edit replaced these values. kept: a record deleted on one side stayed because the other side changed it. */
+  kind: 'field' | 'kept'
+  /** whose value was replaced, or who deleted the record that was kept */
+  from: 'browser' | 'server'
+  fields?: string[]
+  kept?: Record<string, unknown>
+  replaced?: Record<string, unknown>
+  replacedAt: string
+}
+
 interface SyncState {
   status: SyncStatus
   lastSync?: string
   pending: number
   message?: string
   conflict?: { local: Counts; server: Counts }
+  replaced: Replaced[]
   set: (patch: Partial<Omit<SyncState, 'set'>>) => void
 }
 
 export const useSync = create<SyncState>()((set) => ({
   status: 'connecting',
   pending: 0,
+  replaced: [],
   set: (patch) => set(patch),
 }))
