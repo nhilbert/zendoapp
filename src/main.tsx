@@ -22,6 +22,10 @@ useStore.subscribe((s, prev) => {
   if (s.settings.locale !== prev.settings.locale) changeLocale(s.settings.locale)
 })
 startSync()
+// The built app opens without a connection too (src/sw.js); the dev server has no service worker.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => void navigator.serviceWorker.register('/sw.js').catch(() => undefined))
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

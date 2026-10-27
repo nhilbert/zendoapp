@@ -431,7 +431,9 @@ export function startSync(): () => void {
       if (queued() || needsFullPush) schedule() // edits made during the handshake
     } catch (err) {
       ready = false
-      sync({ status: err instanceof SignInRequired ? 'signin' : 'local', message: err instanceof Error ? err.message : String(err) })
+      // A browser that has synced before (e.g. opened offline from the saved app) only waits for the server.
+      const status = err instanceof SignInRequired ? 'signin' : err instanceof ServiceUnavailable && storage.get(FLAG_SYNCED) ? 'offline' : 'local'
+      sync({ status, message: err instanceof Error ? err.message : String(err) })
       window.clearTimeout(timer)
       timer = window.setTimeout(() => void handshake(), 15000)
     }
