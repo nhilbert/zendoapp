@@ -25,6 +25,23 @@ describe('API', () => {
     expect((await hosted.request('/api/state', { headers: { ...pub, host: 'other.example.com' } })).status).toBe(403)
     expect((await hosted.request('/api/state', { headers: { ...pub, 'x-zendo': '' } })).status).toBe(403)
   })
+  it('hosted with users, answers only the signed-in e-mail – and inbox captures with the token', async () => {
+    const hosted = createApp({
+      repo: new Repo(openDb(':memory:')),
+      publicUrl: new URL('https://zendo.example.com'),
+      access: { users: ['me@example.com'], userHeader: 'x-auth-request-email', captureToken: 'secret-token' },
+    })
+    const pub = { ...H, host: 'zendo.example.com' }
+    expect((await hosted.request('/api/state', { headers: pub })).status).toBe(401)
+    expect((await hosted.request('/api/state', { headers: { ...pub, 'x-auth-request-email': 'other@example.com' } })).status).toBe(401)
+    expect((await hosted.request('/api/state', { headers: { ...pub, 'x-auth-request-email': 'Me@Example.com' } })).status).toBe(200)
+    const capture = (auth: string, path = '/api/inbox', method = 'POST') => hosted.request(path, { method, headers: { ...pub, authorization: auth }, body: method === 'POST' ? JSON.stringify({ text: 'from the CRM' }) : undefined })
+    expect((await capture('Bearer secret-token')).status).toBe(201)
+    expect((await capture('Bearer wrong')).status).toBe(401)
+    expect((await capture('Bearer secret-token', '/api/changes')).status).toBe(401)
+    expect((await capture('Bearer secret-token', '/api/state', 'GET')).status).toBe(401)
+    expect((await hosted.request('/api/health')).status).toBe(200)
+  })
   it('round-trips state and changes', async () => {
     const empty = await (await app.request('/api/state', { headers: H })).json()
     expect(empty.initialized).toBe(false)

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { BadRequest, type Repo, validateChanges, validateSnapshot } from './repo.ts'
-import { guard } from './guard.ts'
+import { type Access, guard } from './guard.ts'
 import { STORE_VERSION } from '../src/domain/migrations.ts'
 
 export interface AppOptions {
@@ -20,13 +20,15 @@ export interface AppOptions {
   staticDir?: string
   /** Public address when hosted behind a reverse proxy (ZENDO_PUBLIC_URL); its host and origin pass the guard. */
   publicUrl?: URL
+  /** Hosted: who the API answers (the login proxy's e-mail header) and the inbox capture token (server/guard.ts). */
+  access?: Access
 }
 
-export function createApp({ repo, calendar, ai, mcp, oauth, trmnl, staticDir, publicUrl }: AppOptions): Hono {
+export function createApp({ repo, calendar, ai, mcp, oauth, trmnl, staticDir, publicUrl, access }: AppOptions): Hono {
   const app = new Hono()
 
   app.get('/api/health', (c) => c.json({ ok: true, version: STORE_VERSION, initialized: repo.isInitialized() }))
-  app.use('/api/*', guard(publicUrl))
+  app.use('/api/*', guard(publicUrl, access))
   app.onError((err, c) => {
     if (err instanceof BadRequest) return c.json({ error: err.message }, 400)
     console.error('API error:', err)

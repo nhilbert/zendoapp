@@ -85,7 +85,11 @@ if (process.env.ZENDO_TRMNL === '1') {
 }
 const mcp = MCP_TOKEN || oauth ? mcpRoutes(repo, { token: MCP_TOKEN, oauth }, { hidePrivate: process.env.ZENDO_MCP_HIDE_PRIVATE === '1' }) : undefined
 const hasUi = existsSync(path.join(DIST, 'index.html'))
-const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), mcp, oauth: oauth && { routes: oauth.routes(), admin: oauth.adminRoutes() }, trmnl: trmnl?.routes(), staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL })
+// Hosted, the API answers only the users the login proxy lets in (ZENDO_OAUTH_USERS), plus inbox captures with the token.
+const USER_HEADER = process.env.ZENDO_OAUTH_USER_HEADER?.trim().toLowerCase() || 'x-auth-request-email'
+const access = PUBLIC_URL && OAUTH_USERS.length ? { users: OAUTH_USERS.map((u) => u.toLowerCase()), userHeader: USER_HEADER, captureToken: process.env.ZENDO_CAPTURE_TOKEN?.trim() || undefined } : undefined
+if (PUBLIC_URL && !access) console.error('ZENDO_PUBLIC_URL is set without ZENDO_OAUTH_USERS: the API trusts the login proxy alone. Set ZENDO_OAUTH_USERS.')
+const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), mcp, oauth: oauth && { routes: oauth.routes(), admin: oauth.adminRoutes() }, trmnl: trmnl?.routes(), staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL, access })
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, () => {
   console.log(`Zendo server on http://${HOST}:${PORT}${PUBLIC_URL ? ` (public ${PUBLIC_URL.origin})` : ''} · database ${DB_FILE}${backup ? ` · backup ${backup}` : ''}`)
