@@ -98,7 +98,7 @@ Each stage is usable on its own and produces the evidence for the next.
 - A run reads new mail and the inbox and *proposes* handovers ("Mail from X asks for a meeting – propose slots?") as inbox items with a prefilled brief. Accepting is the handover; nothing is prepared before.
 - Only if stage 0–3 show that one type (for example meeting slots) is reliably right: allow preparing that type without a handover, still as a draft.
 
-## 6a. Stage 2+ in detail: delegate in Clarify, a dispatcher on the laptop, one session per task
+## 6a. Stage 2+ in detail (set aside, see 6b): delegate in Clarify, a dispatcher on the laptop, one session per task
 
 Decided 2026-11-04: result quality is not in question, so stage 0 is skipped. Target: delegation is a decision in Clarify; work starts without opening Claude; each task gets its own session.
 
@@ -152,6 +152,39 @@ Instead of a separate review agent, the type prompt asks the session to spawn a 
 - Whether `claude -p` on the laptop reaches the claude.ai connectors (Microsoft 365, CRM) with the subscription login, or whether they must be configured as local MCP servers.
 - Whether runs count against the subscription's limits or need an API key (Agent SDK); the run log records tokens either way.
 - Cloud runs (stage 3) would use the same queue: a second dispatcher on the Hetzner server running the Agent SDK for types that need no local files.
+
+## 6b. Chosen variant: Claude projects pull their own tasks
+
+Decided 2026-11-04, replaces 6a for now. Reason: client data (mail, files) must not be processed on the hosted server, and client work is already isolated per client in Claude projects that know their files. So Zendo only marks and briefs; the work happens in the client's Claude project, started by a scheduled task or by hand.
+
+### What lives where
+
+| Place | Holds | Does not hold |
+|---|---|---|
+| Zendo (hosted) | Task title, project, the brief (a few lines), state, a short result note with a pointer ("draft in Outlook", "offer in folder …") | Mail content, files, draft text |
+| Claude project per client (on the laptop) | Instructions, the client's files, skills; the sessions that do the work | Other clients' files |
+| Outlook / OneDrive | The drafts | – |
+
+Write briefs and result notes so that they would not hurt on the server: what to do and where the result is, not the content.
+
+### Flow
+
+1. **Clarify / task review:** mark a task "for AI" and write the brief (section 4).
+2. **Claude project, scheduled** (e.g. weekday mornings at 08:10 and 13:10, one schedule per active client project, each firing a fresh session):
+   > Read in Zendo the open tasks of project "<Zendo project>" that are marked for AI (`task_list`, then only those marked). Work only on those, only with this project's files and the brief. For each: gather, draft, check with a reviewer sub-agent against the brief (at most two rounds), save the result as an Outlook draft or a file in the project's review folder. Then add a note to the task: what was done, where the result is, assumptions, open questions – no client content. Set the task to "ready for review", or to "question" if the brief is not enough. Do not send, book, or write to the CRM. If no task is marked, end without output.
+3. **Review** in Zendo (the note) and in Outlook/Word; feedback goes into the brief, the task is marked again.
+
+A general "Office" project covers chores without a client (mail replies, meeting slots).
+
+### Marking in Zendo
+
+- **Now, without code:** status `waiting`, waiting for `KI`, brief in the description; result back as a note with waiting for `Review`, question with waiting for `Rückfrage`. `task_list` with project and status `waiting` finds them.
+- **Small extension:** in Clarify and the task dialog a toggle "For AI" with a brief field; `Task.agent = { state: 'queued' | 'question' | 'review', brief }`; `task_list` gets a filter `agent`; an "AI" filter on Today/Board shows questions and results. No queue, lease, token or dispatcher.
+
+### Limits of the isolation
+
+- The Claude project isolates files and instructions. The connectors (Outlook, CRM, Zendo) are account-wide: a Metropol session can technically read every mail and every Zendo task. The prompt restricts it; permissions do not. Denying the sending and writing tools still works per project settings.
+- Whether a scheduled task can be bound to a Claude project (so it sees the project's files) depends on the Claude app; to be verified before relying on it. Fallback: open the project and start the run by hand ("work on the delegated tasks").
 
 ## 7. Risks
 
