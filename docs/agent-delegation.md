@@ -186,6 +186,33 @@ A general "Office" project covers chores without a client (mail replies, meeting
 - The Claude project isolates files and instructions. The connectors (Outlook, CRM, Zendo) are account-wide: a Metropol session can technically read every mail and every Zendo task. The prompt restricts it; permissions do not. Denying the sending and writing tools still works per project settings.
 - Whether a scheduled task can be bound to a Claude project (so it sees the project's files) depends on the Claude app; to be verified before relying on it. Fallback: open the project and start the run by hand ("work on the delegated tasks").
 
+## 6c. Starting a run at handover: the scheduled-task API
+
+Checked 2026-11-04 against the documentation ([fire endpoint](https://platform.claude.com/docs/en/api/claude-code/routines-fire), [cloud scheduled tasks](https://code.claude.com/docs/en/routines), [Desktop scheduled tasks](https://code.claude.com/docs/en/desktop-scheduled-tasks.md); research preview, may change):
+
+- `POST https://api.anthropic.com/v1/claude_code/routines/{trig_…}/fire` with a per-task bearer token and an optional `text` (up to 65 536 characters) starts a **new session** of a **cloud** scheduled task and returns its id and URL. The token can only fire that one task, nothing else. Limits: 30 fires per hour per task, 100 per account; no idempotency key (a retry creates a second session). Runs count against the Claude subscription.
+- Cloud tasks run on Anthropic's infrastructure with the connectors chosen per task (Microsoft 365, CRM, Zendo), **without local files**.
+- **Desktop scheduled tasks** run on the laptop in a chosen local folder, with local files, one fresh session per run, a permission mode per task. They have **no API trigger**: only a schedule (forms: at least hourly; Claude can set shorter) or "Run now". They skip runs while the laptop sleeps and catch up once on wake.
+
+So the API answers "start without opening Claude" only for work that needs no local files.
+
+### Split by where the material is
+
+| Task type | Where it runs | Started by | Isolation |
+|---|---|---|---|
+| Mail reply, meeting slots (sources: Outlook, calendar, CRM) | Cloud task "Zendo – Office" | Zendo at handover: `fire` with task id and brief as `text` | Connectors chosen per task; the mailbox is whole either way |
+| Offer and other work on client files | Desktop task per client folder (e.g. `Kunden/Metropol`) | Schedule (e.g. weekdays 08:10, 12:10, 16:10) or "Run now" | The folder; the task's prompt names the Zendo project |
+
+### Zendo side
+
+- Clarify's "For AI" with a type. For a cloud type, the server fires the task (token and URL in `.env`, `ZENDO_ROUTINE_<TYPE>_URL` / `_TOKEN`) once, stores the returned session URL on the task and never retries automatically (no idempotency); a failure shows "not started – start again".
+- The task shows the session link: one click opens the run on claude.ai, where the conversation can continue. Desktop runs report their session in the result note.
+- The run writes its result note and state back through the Zendo connector, as in 6b.
+
+### What this changes about the data
+
+The brief goes to Anthropic in the `text`; mail and CRM content is read by a cloud session on Anthropic's infrastructure. That is the same provider as interactive use with connectors, but a different place than the laptop. Client files stay local with the Desktop tasks.
+
 ## 7. Risks
 
 - **Prompt injection through incoming mail.** A mail can contain instructions. Mitigation: P4 (no sending, no writes outside drafts and the review folder), mail content passed as data, and the review step before anything leaves.
