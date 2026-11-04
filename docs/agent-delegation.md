@@ -98,6 +98,61 @@ Each stage is usable on its own and produces the evidence for the next.
 - A run reads new mail and the inbox and *proposes* handovers ("Mail from X asks for a meeting – propose slots?") as inbox items with a prefilled brief. Accepting is the handover; nothing is prepared before.
 - Only if stage 0–3 show that one type (for example meeting slots) is reliably right: allow preparing that type without a handover, still as a draft.
 
+## 6a. Stage 2+ in detail: delegate in Clarify, a dispatcher on the laptop, one session per task
+
+Decided 2026-11-04: result quality is not in question, so stage 0 is skipped. Target: delegation is a decision in Clarify; work starts without opening Claude; each task gets its own session.
+
+### Topology
+
+```
+┌──────── Hetzner (hosted Zendo) ────────┐          ┌──────────────────────── laptop ────────────────────────┐
+│ Clarify: "Delegate to AI" + brief      │          │ zendo-agent (Node, launchd, no LLM)                     │
+│ brief check (server/ai.ts, Sonnet)     │  poll /  │  ├─ GET  /api/agent/queue      every 60 s              │
+│ Task.agent = { state, kind, brief, …}  │◀─────────│  ├─ POST /api/agent/claim      (lease 30 min)          │
+│ /api/agent/*  (agent token only)       │  report  │  ├─ spawn: claude -p  … one process per task           │
+│ "AI" view: questions, results, review  │◀─────────│  │    own session id, own work folder, type's settings │
+└────────────────────────────────────────┘          │  └─ POST /api/agent/report     (result, log, session)  │
+                                                    │                                                         │
+                                                    │ claude -p ──▶ Outlook drafts, CRM read, local files,   │
+                                                    │               review folder (OneDrive)                  │
+                                                    └─────────────────────────────────────────────────────────┘
+```
+
+The laptop calls out; the hosted Zendo never has to reach the laptop. Polling is a plain HTTP request without a model, so a 60-second interval costs nothing. (Later, a long-lived `GET /api/agent/events` stream can replace the interval; the rest stays the same.)
+
+### Clarify
+
+- A sixth decision next to task, project, meeting, someday, trash: **Delegate to AI**. It creates a task like "task" does (title, project, due date) plus `agent = { state: 'draft', kind, brief }`.
+- The form shows the type (mail reply, meeting slots, offer, free) and the type's brief fields, prefilled from the inbox text where possible. Clarify's automatic proposal (AI-7) may propose this decision for items that look like a meeting request or a mail needing an answer; as always, nothing is pre-selected.
+- **Hand over** runs the brief check (`POST /api/ai/brief-check`, Clarify's model, low effort). "Sufficient" sets `state: 'queued'`; otherwise up to three questions appear inline, answered in the same form. "Hand over anyway" is possible; the agent then asks itself if needed.
+- The same action exists on any existing task (task dialog, Today, Board).
+
+### Zendo server
+
+- `Task.agent?: { state: 'draft' | 'queued' | 'working' | 'question' | 'review' | 'returned', kind, brief, questions: { q, a? }[], result?: { summary, links[] }, runs: { at, sessionId, outcome, tokens?, minutes }[], leaseUntil?, feedback? }`, with a generated column on `state`.
+- `/api/agent/queue`, `/claim`, `/report`, `/heartbeat` accept only `Authorization: Bearer <ZENDO_AGENT_TOKEN>` and can do nothing else, like the existing capture token; the login proxy lets these four routes through with the token.
+- `/report` is the only way into `review` or `question`; `/claim` grants a lease, and an expired lease puts the task back to `queued`.
+- An **AI** view: questions waiting for an answer, results waiting for review (summary, links to the drafts, run log), buttons accept (task done or back to todo), return with feedback, withdraw. A counter in the navigation. The pause switch and the maximum parallelism in Settings.
+
+### Dispatcher on the laptop (`zendo-agent`)
+
+- A small Node script in this repository (`agent/`), started by launchd at login (`KeepAlive`), configured by a local file outside the repo: Zendo URL, agent token, work root, parallelism (default 2), budget per type.
+- Loop: if not paused and a slot is free → fetch queue → claim → create `work/<taskId>/` with `brief.md` (brief, answers, feedback, Zendo context) → spawn
+  `claude -p "<type prompt>" --settings types/<kind>.json --max-turns <n> --output-format json` with `caffeinate -i` so the laptop does not sleep mid-run → read the JSON result → `report`.
+- **One process, one session per task.** The session id goes into `runs[]`. "Return with feedback" starts `claude -p --resume <sessionId> "<feedback>"`, so the second round continues the same thread with all its context. Every session can also be opened by hand in Claude Code (`claude --resume <id>`) to look over the agent's shoulder or take over.
+- Type settings (`types/mail.json`, `meeting.json`, `offer.json`, `free.json`) hold the allow-list and deny-list (section 1, P4) and the skills to use. The agent gets no Zendo write access; it returns its result as JSON, and the dispatcher reports it.
+- Sleep and shutdown: nothing runs while the laptop sleeps; at wake, expired leases are back in the queue and the loop continues.
+
+### The run inside a session
+
+Instead of a separate review agent, the type prompt asks the session to spawn a reviewer sub-agent (Agent tool) after the draft, with the type's checklist, at most two rounds. The final answer is a JSON object: `{ outcome: 'review' | 'question', summary, links, questions, assumptions }`.
+
+### Open points for this stage
+
+- Whether `claude -p` on the laptop reaches the claude.ai connectors (Microsoft 365, CRM) with the subscription login, or whether they must be configured as local MCP servers.
+- Whether runs count against the subscription's limits or need an API key (Agent SDK); the run log records tokens either way.
+- Cloud runs (stage 3) would use the same queue: a second dispatcher on the Hetzner server running the Agent SDK for types that need no local files.
+
 ## 7. Risks
 
 - **Prompt injection through incoming mail.** A mail can contain instructions. Mitigation: P4 (no sending, no writes outside drafts and the review folder), mail content passed as data, and the review step before anything leaves.
