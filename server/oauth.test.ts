@@ -160,6 +160,31 @@ describe('OAuth for /mcp', () => {
     expect(new URL(res.headers.get('location')!).searchParams.get('error')).toBe('invalid_target')
   })
 
+
+  it('requires the configured reverse-proxy secret for hosted approval', async () => {
+    const secret = 'proxy-secret-for-test'
+    const ctx = setup({ baseUrl: new URL('https://zendo.example.com'), allowedUsers: ['owner@example.de'], userHeader: 'x-auth-request-email', proxySecret: secret })
+    const { body } = await register(ctx.app)
+    const q = new URLSearchParams({ response_type: 'code', client_id: body.client_id, redirect_uri: CALLBACK, code_challenge: 'c'.repeat(43), code_challenge_method: 'S256', resource: 'https://zendo.example.com/mcp' })
+    const target = `/oauth/authorize?${q}`
+    const headers = { host: 'zendo.example.com', 'x-auth-request-email': 'owner@example.de' }
+    expect((await ctx.app.request(target, { headers })).status).toBe(403)
+    expect((await ctx.app.request(target, { headers: { ...headers, 'x-zendo-proxy-secret': 'wrong' } })).status).toBe(403)
+    expect((await ctx.app.request(target, { headers: { ...headers, 'x-zendo-proxy-secret': secret } })).status).toBe(200)
+    // Bearer-token MCP calls do not require an upstream identity header.
+    expect((await callMcp(ctx.app)).status).toBe(401)
+  })
+
+  it('requires the reverse-proxy secret on hosted API requests as well', async () => {
+    const db = openDb(':memory:')
+    const repo = new Repo(db)
+    const app = createApp({ repo, publicUrl: new URL('https://zendo.example.com'), access: { users: ['owner@example.de'], userHeader: 'x-auth-request-email', proxySecret: 'proxy-secret-for-test' } })
+    const headers = { host: 'zendo.example.com', 'x-zendo': '1', 'x-auth-request-email': 'owner@example.de' }
+    expect((await app.request('/api/state', { headers })).status).toBe(403)
+    expect((await app.request('/api/state', { headers: { ...headers, 'x-zendo-proxy-secret': 'wrong' } })).status).toBe(403)
+    expect((await app.request('/api/state', { headers: { ...headers, 'x-zendo-proxy-secret': 'proxy-secret-for-test' } })).status).toBe(200)
+  })
+
   it('lists connections for Settings and disconnects them', async () => {
     const ctx = setup()
     const { clientId, tokens } = await connect(ctx)
