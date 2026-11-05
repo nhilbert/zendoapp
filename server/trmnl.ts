@@ -23,6 +23,8 @@ export interface TrmnlConfig {
   /** Who may install (e-mails from the login proxy); empty = local mode, only a browser on this machine. */
   allowedUsers: string[]
   userHeader?: string
+  /** Hosted: require the reverse proxy secret on human installation/management pages. */
+  proxySecret?: string
   /** TRMNL account e-mails accepted when TRMNL confirms an installation; empty = any. */
   accounts: string[]
   /** TRMNL's code exchange, injectable for tests. */

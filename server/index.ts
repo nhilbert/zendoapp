@@ -60,6 +60,8 @@ const ai = resolveAi({
 const MCP_TOKEN = process.env.ZENDO_MCP_TOKEN?.trim() || undefined
 const list = (v?: string) => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean)
 const OAUTH_USERS = list(process.env.ZENDO_OAUTH_USERS)
+const PROXY_SECRET = process.env.ZENDO_PROXY_SECRET?.trim() || undefined
+if (PUBLIC_URL && !PROXY_SECRET) console.warn('ZENDO_PROXY_SECRET is not set: signed-in e-mail headers rely entirely on proxy and network isolation. See docs/mcp.md.')
 let oauth: OAuthServer | undefined
 if (process.env.ZENDO_MCP_OAUTH === '1') {
   // Hosted, only users named in ZENDO_OAUTH_USERS (checked by the login proxy) may approve; never fall back to "anyone".
@@ -69,6 +71,7 @@ if (process.env.ZENDO_MCP_OAUTH === '1') {
       baseUrl: PUBLIC_URL ?? new URL(`http://127.0.0.1:${PORT}`),
       allowedUsers: OAUTH_USERS,
       userHeader: process.env.ZENDO_OAUTH_USER_HEADER?.trim() || 'x-auth-request-email',
+      proxySecret: PROXY_SECRET,
       extraRedirects: list(process.env.ZENDO_OAUTH_REDIRECTS),
     })
 }
@@ -80,6 +83,7 @@ if (process.env.ZENDO_TRMNL === '1') {
     trmnl = new TrmnlService(db, repo, {
       allowedUsers: OAUTH_USERS,
       userHeader: process.env.ZENDO_OAUTH_USER_HEADER?.trim() || 'x-auth-request-email',
+      proxySecret: PROXY_SECRET,
       accounts: list(process.env.ZENDO_TRMNL_ACCOUNTS ?? process.env.ZENDO_OAUTH_USERS),
     })
 }
@@ -87,8 +91,8 @@ const mcp = MCP_TOKEN || oauth ? mcpRoutes(repo, { token: MCP_TOKEN, oauth }, { 
 const hasUi = existsSync(path.join(DIST, 'index.html'))
 // Hosted, the API answers only the users the login proxy lets in (ZENDO_OAUTH_USERS), plus inbox captures with the token.
 const USER_HEADER = process.env.ZENDO_OAUTH_USER_HEADER?.trim().toLowerCase() || 'x-auth-request-email'
-const access = PUBLIC_URL && OAUTH_USERS.length ? { users: OAUTH_USERS.map((u) => u.toLowerCase()), userHeader: USER_HEADER, captureToken: process.env.ZENDO_CAPTURE_TOKEN?.trim() || undefined } : undefined
-if (PUBLIC_URL && !access) console.error('ZENDO_PUBLIC_URL is set without ZENDO_OAUTH_USERS: the API trusts the login proxy alone. Set ZENDO_OAUTH_USERS.')
+const access = PUBLIC_URL ? { users: OAUTH_USERS.map((u) => u.toLowerCase()), userHeader: USER_HEADER, captureToken: process.env.ZENDO_CAPTURE_TOKEN?.trim() || undefined, proxySecret: PROXY_SECRET } : undefined
+if (PUBLIC_URL && !OAUTH_USERS.length) console.error('ZENDO_PUBLIC_URL is set without ZENDO_OAUTH_USERS: the API trusts the login proxy alone. Set ZENDO_OAUTH_USERS.')
 const app = createApp({ repo, calendar: calendar.routes, ai: aiRoutes(repo, ai), mcp, oauth: oauth && { routes: oauth.routes(), admin: oauth.adminRoutes() }, trmnl: trmnl?.routes(), staticDir: hasUi ? DIST : undefined, publicUrl: PUBLIC_URL, access })
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, () => {
