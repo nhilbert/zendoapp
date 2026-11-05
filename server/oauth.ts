@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { createHash, randomBytes } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
+import { fromProxy } from './guard.ts'
 
 /**
  * OAuth 2.1 authorization server for the MCP endpoint, as Claude's connectors expect it
@@ -20,6 +21,8 @@ export interface OAuthConfig {
   baseUrl: URL
   /** Hosted: header the login proxy sets with the signed-in user's e-mail, e.g. x-auth-request-email. */
   userHeader?: string
+  /** Hosted: shared secret added by the reverse proxy to prove the identity header came through it. */
+  proxySecret?: string
   /** Hosted: e-mail addresses allowed to approve connections. Empty = local mode (loopback only). */
   allowedUsers?: string[]
   /** Extra redirect URIs accepted at registration besides Claude's callbacks and loopback. */
@@ -67,8 +70,9 @@ function socketAddress(c: Context): string | undefined {
  */
 export function signedInUser(
   c: Context,
-  cfg: { allowedUsers: string[]; userHeader?: string; remoteAddress?: (c: Context) => string | undefined },
+  cfg: { allowedUsers: string[]; userHeader?: string; proxySecret?: string; remoteAddress?: (c: Context) => string | undefined },
 ): string | null {
+  if (!fromProxy(c.req.raw.headers, cfg.proxySecret)) return null
   if (cfg.allowedUsers.length) {
     const email = cfg.userHeader ? c.req.header(cfg.userHeader)?.trim().toLowerCase() : undefined
     return email && cfg.allowedUsers.includes(email) ? email : null
@@ -115,7 +119,7 @@ interface AuthRequest {
 
 export class OAuthServer {
   private db: DatabaseSync
-  private cfg: Required<Omit<OAuthConfig, 'userHeader' | 'remoteAddress'>> & { userHeader?: string; remoteAddress: (c: Context) => string | undefined }
+  private cfg: Required<Omit<OAuthConfig, 'userHeader' | 'proxySecret' | 'remoteAddress'>> & { userHeader?: string; proxySecret?: string; remoteAddress: (c: Context) => string | undefined }
   private pending = new Map<string, AuthRequest & { expires: number }>()
   private codes = new Map<string, AuthRequest & { expires: number }>()
 
