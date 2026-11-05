@@ -187,6 +187,16 @@ describe('TRMNL plugin flow', () => {
     expect((await markup(app, 'token-abc')).status).toBe(401)
   })
 
+
+  it('requires a shared proxy secret on hosted TRMNL approval pages', async () => {
+    const ctx = setup({ allowedUsers: ['norman@example.de'], userHeader: 'x-auth-request-email', proxySecret: 'shared-test-secret' })
+    const headers = { ...host, 'x-auth-request-email': 'norman@example.de' }
+    const url = `/trmnl/install?code=abc&installation_callback_url=${encodeURIComponent(callback)}`
+    expect((await ctx.app.request(url, { headers })).status).toBe(403)
+    expect((await ctx.app.request(url, { headers: { ...headers, 'x-zendo-proxy-secret': 'bad' } })).status).toBe(403)
+    expect((await ctx.app.request(url, { headers: { ...headers, 'x-zendo-proxy-secret': 'shared-test-secret' } })).status).toBe(200)
+  })
+
   it('lets only the signed-in owner install, and only back to TRMNL', async () => {
     const hosted = setup({ allowedUsers: ['norman@example.de'], userHeader: 'x-auth-request-email' })
     expect((await hosted.app.request(`/trmnl/install?code=a&installation_callback_url=${encodeURIComponent(callback)}`, { headers: host })).status).toBe(403)
