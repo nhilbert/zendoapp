@@ -104,16 +104,23 @@ The consent page must stay behind the login. Discovery, registration, token exch
 
 oauth2-proxy must return the e-mail of the signed-in user: start it with `--set-xauthrequest=true` (config file: `set_xauthrequest = true`).
 
+**Optional proxy-secret hardening (recommended when hosted):** Generate a 32-byte secret (`openssl rand -hex 32`) and configure the **same** `ZENDO_PROXY_SECRET` in Zendo and Caddy. The Caddy upstream must **overwrite** `X-Zendo-Proxy-Secret`, not accept a value supplied by an external client. With the secret set in Zendo, API calls and the human OAuth/TRMNL approval pages reject any request that does not carry it (403). MCP token requests and metadata remain governed by their own OAuth checks. This is defense in depth; do not publish Zendo's container port.
+
+**Safe rollout:** (1) Keep the application unchanged; configure the secret in Caddy and the two upstream `header_up` directives, then validate/reload Caddy. (2) Confirm normal login and MCP flows. (3) Set `ZENDO_PROXY_SECRET` on Zendo and restart only Zendo. (4) Recheck UI/API, OAuth approval, and optional TRMNL installation. If you must roll back, remove the value from Zendo first; leave Caddy's header until the application no longer requires it. Calls that bypass Caddy, including direct container-to-container API calls, will be rejected once enabled.
+
 Caddyfile of the Zendo host (adapt names and ports; keep your existing sign-in redirect handling in the second block):
 
 ```
 zendo.example.com {
 	# never trust this header from outside: only the proxy's answer may set it
 	request_header -X-Auth-Request-Email
+	request_header -X-Zendo-Proxy-Secret
 
 	@agent path /mcp /.well-known/oauth-protected-resource* /.well-known/oauth-authorization-server /oauth/register /oauth/token /oauth/revoke
 	handle @agent {
-		reverse_proxy zendo:5174
+		reverse_proxy zendo:5174 {
+			header_up X-Zendo-Proxy-Secret {env.ZENDO_PROXY_SECRET}
+		}
 	}
 
 	handle {
@@ -121,7 +128,9 @@ zendo.example.com {
 			uri /oauth2/auth
 			copy_headers X-Auth-Request-Email
 		}
-		reverse_proxy zendo:5174
+		reverse_proxy zendo:5174 {
+			header_up X-Zendo-Proxy-Secret {env.ZENDO_PROXY_SECRET}
+		}
 	}
 }
 ```
@@ -132,6 +141,7 @@ Checklist after deploying:
 - `curl https://zendo.example.com/.well-known/oauth-authorization-server` → JSON, no redirect to Microsoft.
 - `curl -i -H 'X-Auth-Request-Email: you@example.com' 'https://zendo.example.com/oauth/authorize?client_id=x'` → the proxy's answer (redirect to the Microsoft sign-in or `401`), **not** Zendo's "Unknown client" page. If you get a Zendo page, the consent route is outside the login and the header can be forged – fix the Caddyfile before enabling OAuth.
 - The Zendo container publishes no port: it must be reachable only through Caddy (`docker ps` shows no `0.0.0.0:5174->`).
+- With `ZENDO_PROXY_SECRET` enabled, direct requests to the container's `/api/state` or `/oauth/authorize` with a forged `X-Auth-Request-Email` but **without** `X-Zendo-Proxy-Secret` must get 403. Do not put the secret into curl commands, browser code, logs, or the repository.
 - If Entra conditional access or a firewall restricts by IP: Claude's requests come from `160.79.104.0/21`.
 
 ## Configuration
@@ -141,6 +151,7 @@ Checklist after deploying:
 | `ZENDO_MCP_OAUTH` | off | `1` enables OAuth and `/mcp`. Hosted it requires `ZENDO_OAUTH_USERS`, otherwise it stays off (logged). |
 | `ZENDO_OAUTH_USERS` | – | Comma-separated e-mail addresses that may approve connections (case-insensitive). Empty = local mode. |
 | `ZENDO_OAUTH_USER_HEADER` | `x-auth-request-email` | Header carrying the signed-in e-mail from the login proxy. |
+| `ZENDO_PROXY_SECRET` | – | Optional shared Caddy-to-Zendo secret. When set, `/api/*` and the human OAuth/TRMNL approval routes require the trusted upstream header; for safe rollout configure Caddy first. |
 | `ZENDO_OAUTH_REDIRECTS` | – | Extra redirect URIs clients may register, comma-separated. Claude's callbacks and loopback are always allowed. |
 | `ZENDO_MCP_TOKEN` | – | Static bearer token for `/mcp`; works with or without OAuth. |
 | `ZENDO_MCP_HIDE_PRIVATE` | off | `1`: private projects, their tasks and blocks and private tasks are invisible to the agent and cannot be changed by it; private appointments show as "private". Applies to all connections. |
@@ -230,7 +241,7 @@ The server also sends the agent short instructions on connect: capture uncertain
 | Asset / path | Protection |
 |---|---|
 | Web UI and `/api/*` | Login proxy (Microsoft Entra ID, MFA) plus the `x-zendo` header check |
-| Approving an agent (`/oauth/authorize`) | Login proxy **and** `ZENDO_OAUTH_USERS`; locally: loopback socket and Host |
+| Approving an agent (`/oauth/authorize`) | Login proxy **and** `ZENDO_OAUTH_USERS`, plus `ZENDO_PROXY_SECRET` when configured; locally: loopback socket and Host |
 | Calling tools (`/mcp`) | Bearer access token issued after your approval (or the static token) |
 | Obtaining tokens (`/oauth/token`) | Registered client + single-use 60-second code + S256 PKCE verifier, or a valid refresh token |
 | Stored credentials | Only SHA-256 hashes of tokens in `oauth_tokens`; no client secrets exist |
