@@ -1,6 +1,21 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Context, Next } from 'hono'
 
+/** Only Caddy may assert a signed-in user's identity. When configured, enforce a shared secret
+ * on requests to the API and the human approval pages (OAuth and TRMNL).
+ * The header is never a substitute for protecting the backend network port.
+ */
+export const PROXY_SECRET_HEADER = 'x-zendo-proxy-secret'
+
+export function fromProxy(headers: Headers, secret?: string): boolean {
+  if (!secret) return true // local use / backwards-compatible rollout; warn in hosted mode
+  const given = headers.get(PROXY_SECRET_HEADER)
+  if (given === null) return false
+  const actual = Buffer.from(given)
+  const expected = Buffer.from(secret)
+  return actual.length === expected.length && timingSafeEqual(actual, expected)
+}
+
 /**
  * Only Zendo itself may talk to the API: requests must carry the custom header
  * the app sets (a cross-site page cannot add it without a CORS preflight, which
@@ -27,6 +42,8 @@ export interface Access {
   users: string[]
   userHeader: string
   captureToken?: string
+  /** Optional shared secret that Caddy overwrites on every upstream request. */
+  proxySecret?: string
 }
 
 const digest = (v: string) => createHash('sha256').update(v).digest()
@@ -41,6 +58,7 @@ export function isAllowed(method: string, path: string, headers: Headers, access
 
 export function guard(publicUrl?: URL, access?: Access) {
   return async (c: Context, next: Next): Promise<Response | void> => {
+    if (!fromProxy(c.req.raw.headers, access?.proxySecret)) return c.json({ error: 'forbidden' }, 403)
     if (!isTrusted(c.req.raw.headers, c.req.url, publicUrl)) return c.json({ error: 'forbidden' }, 403)
     if (!isAllowed(c.req.method, c.req.path, c.req.raw.headers, access)) return c.json({ error: 'login_required' }, 401)
     await next()
