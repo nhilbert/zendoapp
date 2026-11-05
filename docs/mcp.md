@@ -46,9 +46,10 @@ Prerequisites: Zendo is hosted behind Caddy and oauth2-proxy as in [architecture
    ```
 
    Restart the container. The log shows `MCP: https://zendo.example.com/mcp (OAuth)`.
-2. In Claude: Settings → Connectors → **Add custom connector**, URL `https://zendo.example.com/mcp`. Leave client ID and secret empty.
-3. Claude opens Zendo's consent page. Sign in with Microsoft if asked, check that it names Claude and `claude.ai` as the destination, press **Allow**.
-4. Zendo → Settings → **AI agents (MCP)** now lists the connection.
+2. In Zendo: Settings → **AI agents (MCP)** → **Connect an agent**. This enables exactly one new approval during the next 10 minutes (hosted installations only).
+3. In Claude: Settings → Connectors → **Add custom connector**, URL `https://zendo.example.com/mcp`. Leave client ID and secret empty.
+4. Claude opens Zendo's consent page. Sign in with Microsoft if asked, check that it names Claude and `claude.ai` as the destination, press **Allow**.
+5. Zendo → Settings → **AI agents (MCP)** now lists the connection.
 
 Claude Code works against the same URL: `claude mcp add --transport http zendo https://zendo.example.com/mcp`, then `/mcp` in Claude Code to sign in.
 
@@ -248,7 +249,7 @@ Not in cryptographic strength – both are 256-bit random values. The gain is in
 What OAuth adds in exposure:
 
 - Four endpoints reachable without login (metadata, register, token, revoke). They hand out nothing without your approval. Registration is open by design (Claude registers itself); idle registrations expire after 15 minutes and are capped, so a flood cannot block new connections.
-- **Consent phishing.** Someone could start a connection and get you to press Allow. The page names the application and the destination host and warns when the destination is a program on your computer. Approve only connections you just started yourself.
+- **Consent phishing.** A hosted connection can only be approved once within ten minutes after you press **Connect an agent** in Zendo Settings; approval consumes the grant. A link from another person outside that window is refused. Check the destination host and approve only connections you initiated.
 - **Proxy configuration becomes part of the security.** If `/oauth/authorize` is reachable without the login, or the container port is reachable without Caddy, the e-mail header can be forged. The [checklist](#hosting-behind-caddy-and-oauth2-proxy) tests exactly this.
 
 What neither protects against:
@@ -259,6 +260,7 @@ What neither protects against:
 
 ## Operations
 
+- **Connect a new agent:** Zendo → Settings → AI agents → Connect an agent, then start the OAuth sign-in from Claude within ten minutes. Only one approval is possible per activation. Existing agents remain connected.
 - **Disconnect an agent:** Zendo → Settings → AI agents → Disconnect. All its tokens stop working at once; it must be approved again.
 - **Disconnect all:** stop Zendo, `sqlite3 data/zendo.db 'DELETE FROM oauth_tokens; DELETE FROM oauth_clients;'`, start again.
 - **Rotate the static token:** change `ZENDO_MCP_TOKEN` in `.env`, restart.
@@ -271,6 +273,7 @@ What neither protects against:
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Claude: "Couldn't reach the MCP server", Zendo log shows nothing | `/mcp` or the metadata is behind the login proxy, which answers with a redirect | Add the `@agent` route ([Hosting](#hosting-behind-caddy-and-oauth2-proxy)); check the first two checklist items |
+| Consent page says "Start the connection in Zendo first" | The single-use approval window expired or was not opened. In Settings → AI agents press **Connect an agent** and restart the OAuth sign-in from Claude. |
 | Consent page says "Your account may not approve connections" | E-mail not in `ZENDO_OAUTH_USERS`, or the proxy does not pass it | Check the address; `--set-xauthrequest=true`; `copy_headers X-Auth-Request-Email` |
 | Consent page says "only … on the computer running Zendo" while hosted | `ZENDO_PUBLIC_URL` not set, so Zendo runs in local mode | Set `ZENDO_PUBLIC_URL` and `ZENDO_OAUTH_USERS` |
 | Log: `ZENDO_MCP_OAUTH=1 needs ZENDO_OAUTH_USERS …` | Hosted without an allow-list; OAuth stays off on purpose | Set `ZENDO_OAUTH_USERS` |
