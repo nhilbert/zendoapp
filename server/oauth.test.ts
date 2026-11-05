@@ -12,7 +12,7 @@ function setup(cfg: Partial<OAuthConfig> = {}) {
   const db = openDb(':memory:')
   const repo = new Repo(db)
   const oauth = new OAuthServer(db, { baseUrl: new URL('http://127.0.0.1:5174'), remoteAddress: () => '127.0.0.1', ...cfg })
-  const app = createApp({ repo, mcp: mcpRoutes(repo, { oauth }), oauth: { routes: oauth.routes(), admin: oauth.adminRoutes() } })
+  const app = createApp({ repo, publicUrl: cfg.baseUrl, mcp: mcpRoutes(repo, { oauth }), oauth: { routes: oauth.routes(), admin: oauth.adminRoutes() } })
   return { app, oauth, repo }
 }
 
@@ -151,6 +151,7 @@ describe('OAuth for /mcp', () => {
     const reg = await ctx.app.request('/oauth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ redirect_uris: [CALLBACK] }) })
     const { client_id } = (await reg.json()) as { client_id: string }
     const host = { host: 'zendo.example.com' }
+    ctx.oauth.arm('norman@example.de')
     const q = (challenge: string) => new URLSearchParams({ response_type: 'code', client_id, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: 'S256', resource: 'https://zendo.example.com/mcp' })
     expect((await ctx.app.request(`/oauth/authorize?${q('c'.repeat(43))}`, { headers: host })).status).toBe(403)
     expect((await ctx.app.request(`/oauth/authorize?${q('c'.repeat(43))}`, { headers: { ...host, 'x-auth-request-email': 'other@example.de' } })).status).toBe(403)
@@ -166,6 +167,7 @@ describe('OAuth for /mcp', () => {
     const ctx = setup({ baseUrl: new URL('https://zendo.example.com'), allowedUsers: ['owner@example.de'], userHeader: 'x-auth-request-email', proxySecret: secret })
     const { body } = await register(ctx.app)
     const q = new URLSearchParams({ response_type: 'code', client_id: body.client_id, redirect_uri: CALLBACK, code_challenge: 'c'.repeat(43), code_challenge_method: 'S256', resource: 'https://zendo.example.com/mcp' })
+    ctx.oauth.arm('owner@example.de')
     const target = `/oauth/authorize?${q}`
     const headers = { host: 'zendo.example.com', 'x-auth-request-email': 'owner@example.de' }
     expect((await ctx.app.request(target, { headers })).status).toBe(403)
@@ -183,6 +185,49 @@ describe('OAuth for /mcp', () => {
     expect((await app.request('/api/state', { headers })).status).toBe(403)
     expect((await app.request('/api/state', { headers: { ...headers, 'x-zendo-proxy-secret': 'wrong' } })).status).toBe(403)
     expect((await app.request('/api/state', { headers: { ...headers, 'x-zendo-proxy-secret': 'proxy-secret-for-test' } })).status).toBe(200)
+  })
+
+  it('requires an explicitly armed single-use approval for hosted agents', async () => {
+    const ctx = setup({ baseUrl: new URL('https://zendo.example.com'), allowedUsers: ['owner@example.de'], userHeader: 'x-auth-request-email' })
+    const { body } = await register(ctx.app)
+    const host = { host: 'zendo.example.com', 'x-auth-request-email': 'owner@example.de' }
+    const q = new URLSearchParams({ response_type: 'code', client_id: body.client_id, redirect_uri: CALLBACK,
+      code_challenge: pkce().challenge, code_challenge_method: 'S256', resource: 'https://zendo.example.com/mcp' })
+    const target = `/oauth/authorize?${q}`
+    expect((await ctx.app.request(target, { headers: host })).status).toBe(403)
+    // The owner can enable the next connection via Settings, not an unauthenticated client.
+    const admin = { ...host, 'x-zendo': '1' }
+    const denied = await ctx.app.request('/api/mcp/arm', { method: 'POST', headers: { host: 'zendo.example.com', 'x-zendo': '1' } })
+    expect(denied.status).toBe(403)
+    const armed = await ctx.app.request('/api/mcp/arm', { method: 'POST', headers: admin })
+    expect(armed.status).toBe(200)
+    const page1 = await ctx.app.request(target, { headers: host })
+    expect(page1.status).toBe(200)
+    const pending1 = /name="request" value="([^"]+)"/.exec(await page1.text())![1]
+    const page2 = await ctx.app.request(target, { headers: host })
+    const pending2 = /name="request" value="([^"]+)"/.exec(await page2.text())![1]
+    const consent = (id: string) => ctx.app.request('/oauth/authorize', {
+      method: 'POST', headers: { ...host, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ request: id, decision: 'allow' }).toString(),
+    })
+    expect((await consent(pending1)).status).toBe(302)
+    expect((await consent(pending2)).status).toBe(403)
+    expect((await ctx.app.request(target, { headers: host })).status).toBe(403)
+  })
+
+  it('expires hosted connection approval after ten minutes', async () => {
+    const ctx = setup({ baseUrl: new URL('https://zendo.example.com'), allowedUsers: ['owner@example.de'], userHeader: 'x-auth-request-email' })
+    const { body } = await register(ctx.app)
+    ctx.oauth.arm('owner@example.de')
+    const q = new URLSearchParams({ response_type: 'code', client_id: body.client_id, redirect_uri: CALLBACK,
+      code_challenge: pkce().challenge, code_challenge_method: 'S256', resource: 'https://zendo.example.com/mcp' })
+    const now = Date.now
+    Date.now = () => now() + 11 * 60_000
+    try {
+      expect((await ctx.app.request(`/oauth/authorize?${q}`, { headers: { host: 'zendo.example.com', 'x-auth-request-email': 'owner@example.de' } })).status).toBe(403)
+    } finally {
+      Date.now = now
+    }
   })
 
   it('lists connections for Settings and disconnects them', async () => {

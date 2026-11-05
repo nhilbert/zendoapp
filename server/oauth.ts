@@ -42,6 +42,8 @@ export const CLAUDE_CALLBACKS = ['https://claude.ai/api/mcp/auth_callback', 'htt
 const SCOPE = 'zendo'
 const CODE_TTL_MS = 60_000
 const PENDING_TTL_MS = 10 * 60_000
+/** Hosted owners must explicitly enable a single new connection for this long. */
+export const ARM_TTL_MS = 10 * 60_000
 /** A refresh token presented again within this window is a retry, not theft: refuse it, keep the family. */
 const REUSE_GRACE_MS = 30_000
 /** A registration is followed by sign-in within minutes; clients still without tokens after this are dropped. */
@@ -120,6 +122,7 @@ interface AuthRequest {
 export class OAuthServer {
   private db: DatabaseSync
   private cfg: Required<Omit<OAuthConfig, 'userHeader' | 'proxySecret' | 'remoteAddress'>> & { userHeader?: string; proxySecret?: string; remoteAddress: (c: Context) => string | undefined }
+  private armed = new Map<string, number>()
   private pending = new Map<string, AuthRequest & { expires: number }>()
   private codes = new Map<string, AuthRequest & { expires: number }>()
 
@@ -151,6 +154,28 @@ export class OAuthServer {
   }
 
   // ---------- policy ----------
+
+  /** Only signed-in owners can arm the next hosted approval; local loopback needs no arming. */
+  arm(user: string): number {
+    const expires = Date.now() + ARM_TTL_MS
+    this.armed.set(user, expires)
+    return expires
+  }
+
+  private armedUntil(user: string): number | null {
+    const expires = this.armed.get(user)
+    if (!expires) return null
+    if (expires <= Date.now()) {
+      this.armed.delete(user)
+      return null
+    }
+    return expires
+  }
+
+  private notArmed(c: Context) {
+    return this.page(c, 'Start the connection in Zendo first',
+      '<p>Before approving a new agent, open Zendo → Settings → AI agents (MCP) and select <strong>Connect an agent</strong>. You can approve one connection during the next ten minutes. If you did not start a connection, close this page.</p>', 403)
+  }
 
   /** Who is approving (see signedInUser). */
   private approver(c: Context): string | null {
@@ -327,6 +352,7 @@ export class OAuthServer {
       if (!user) {
         return this.page(c, 'Not allowed', this.local ? '<p>Connections can only be approved in a browser on the computer running Zendo.</p>' : '<p>Your account may not approve connections to Zendo.</p>', 403)
       }
+      if (!this.local && this.armedUntil(user) === null) return this.notArmed(c)
       const id = randomToken()
       const now = Date.now()
       for (const [k, v] of this.pending) if (v.expires < now) this.pending.delete(k)
@@ -353,6 +379,11 @@ export class OAuthServer {
       if (this.approver(c) !== req.user) return this.page(c, 'Not allowed', '<p>The approval must come from the same signed-in user.</p>', 403)
       const u = new URL(req.redirectUri)
       if (form.decision === 'allow') {
+        if (!this.local) {
+          // Consume the one-time grant only on approval. Concurrent consent pages cannot both succeed.
+          if (this.armedUntil(req.user) === null) return this.notArmed(c)
+          this.armed.delete(req.user)
+        }
         const code = randomToken()
         this.codes.set(sha256(code), { ...req, expires: Date.now() + CODE_TTL_MS })
         u.searchParams.set('code', code)
@@ -410,10 +441,21 @@ export class OAuthServer {
     return app
   }
 
-  /** Settings → connected agents (under /api, so behind the x-zendo guard). */
+  /** Settings → connected agents and arming (under /api, behind the x-zendo guard). */
   adminRoutes(): Hono {
     const app = new Hono()
-    app.get('/connections', (c) => c.json({ connections: this.connections() }))
+    const who = (c: Context) => this.approver(c)
+    app.get('/connections', (c) => {
+      const user = who(c)
+      if (!user) return c.json({ error: 'forbidden' }, 403)
+      return c.json({ connections: this.connections(), resource: this.resource,
+        armRequired: !this.local, armedUntil: this.local ? null : this.armedUntil(user) ? new Date(this.armedUntil(user)!).toISOString() : null })
+    })
+    app.post('/arm', (c) => {
+      const user = who(c)
+      if (!user) return c.json({ error: 'forbidden' }, 403)
+      return c.json({ armedUntil: this.local ? null : new Date(this.arm(user)).toISOString(), resource: this.resource })
+    })
     app.delete('/connections/:id', (c) => c.json({ ok: this.disconnect(c.req.param('id')) }))
     return app
   }

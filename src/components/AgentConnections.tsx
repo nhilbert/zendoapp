@@ -4,6 +4,13 @@ import { api } from '@/sync/api'
 import { useLocale } from '@/components/TaskBits'
 import { Button, SectionLabel } from '@/components/ui'
 
+interface AgentState {
+  connections: Connection[]
+  resource: string
+  armRequired: boolean
+  armedUntil: string | null
+}
+
 interface Connection {
   id: string
   name: string
@@ -18,11 +25,18 @@ export function AgentConnections() {
   const locale = useLocale()
   // undefined = loading, null = OAuth is off on the server (the route answers not_found)
   const [list, setList] = useState<Connection[] | null | undefined>(undefined)
+  const [resource, setResource] = useState('')
+  const [armRequired, setArmRequired] = useState(false)
+  const [armedUntil, setArmedUntil] = useState<string | null>(null)
+  const [arming, setArming] = useState(false)
   const [error, setError] = useState('')
   const load = () =>
-    api<{ connections: Connection[] }>('/api/mcp/connections')
+    api<AgentState>('/api/mcp/connections')
       .then((r) => {
         setList(r.connections)
+        setResource(r.resource)
+        setArmRequired(r.armRequired)
+        setArmedUntil(r.armedUntil)
         setError('')
       })
       .catch((e: Error) => {
@@ -36,6 +50,19 @@ export function AgentConnections() {
     void load()
   }, [])
   const fmt = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
+  const arm = async () => {
+    setArming(true)
+    try {
+      const r = await api<{ armedUntil: string | null; resource: string }>('/api/mcp/arm', { method: 'POST' })
+      setArmedUntil(r.armedUntil)
+      setResource(r.resource)
+      setError('')
+    } catch (e) {
+      setError(t('settings.agentsError', { error: (e as Error).message }))
+    } finally {
+      setArming(false)
+    }
+  }
   const disconnect = async (c: Connection) => {
     if (!window.confirm(t('settings.agentsDisconnectConfirm', { name: c.name }))) return
     try {
@@ -50,6 +77,16 @@ export function AgentConnections() {
     <section>
       <SectionLabel>{t('settings.agents')}</SectionLabel>
       <p className="mb-3 text-[13px] text-ink-2">{list === null ? t('settings.agentsOff') : t('settings.agentsHint')}</p>
+      {list && armRequired && (
+        <div className="mb-3 rounded-lg border border-line p-3 text-[13px]">
+          <p className="mb-2 text-ink-2">{t('settings.agentsArmHint')}</p>
+          <Button disabled={arming} onClick={() => void arm()}>{t('settings.agentsArmButton')}</Button>
+          {armedUntil && Date.parse(armedUntil) > Date.now() && (
+            <p className="mt-2 text-accent">{t('settings.agentsArmedUntil', { date: fmt(armedUntil) })}</p>
+          )}
+          {resource && <p className="mt-2 break-all font-mono text-[12px] text-ink-3">{resource}</p>}
+        </div>
+      )}
       {error && <p className="mb-2 text-[13px] text-amber">{error}</p>}
       {list && list.length === 0 && !error && <p className="text-[13px] text-ink-3">{t('settings.agentsNone')}</p>}
       {list && list.length > 0 && (
